@@ -6,6 +6,12 @@ Created on Mon Jul 19 17:36:38 2021
 @author: kostya
 """
 
+'''
+This is just an example script I downloaded from hasty.ai
+apparently it shows how to use the API to import labels.
+I'm planning to use this as a starting point.
+-dvaughn
+'''
 
 import json
 
