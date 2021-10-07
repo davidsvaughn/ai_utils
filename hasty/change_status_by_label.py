@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
+import sys,os
 import json
-from PIL import Image, ImageDraw
 # install hasty library, pip install hasty
 from hasty import Client
 import numpy as np
+# from PIL import Image, ImageDraw
 
 '''
 Example script to change the status of all images with a particular label...
@@ -14,7 +15,7 @@ https://hasty.readthedocs.io/en/latest/quick_start.html#authentication
 '''
 
 # PASTE YOUR KEY here
-API_KEY = 'Y5Q61FQ1x4dR31RjT4Kf0...'
+API_KEY = 'Y5Q61FQ1x4dR31RjT4Kf0_HCuwc9m2Sw...'
 
 # Create an instance of hasty helper
 h = Client(api_key=API_KEY)
@@ -36,7 +37,9 @@ print(proj)
 
 # Get label classes
 label_classes = proj.get_label_classes()
-[print(lc) for lc in label_classes];
+[print(f'{lc.id}\t{lc.name}') for lc in label_classes];
+
+# sys.exit()
 
 # Retrieve the list of projects images
 images = proj.get_images()
