@@ -47,5 +47,5 @@ for i,image in enumerate(images):
     
     image.set_status(DST_STATUS)
     
-    if i>50: break
+    # if i>50: break
         
