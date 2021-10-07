@@ -7,15 +7,14 @@ import numpy as np
 # from PIL import Image, ImageDraw
 
 '''
-Example script to change the status of all images with a particular label...
-To allow filtering of images by label in the web interface....
+Example script to change the status of all images with a particular status to a new status...
 
 First create API key here....
 https://hasty.readthedocs.io/en/latest/quick_start.html#authentication
 '''
 
 # PASTE YOUR KEY here
-API_KEY = 'Y5Q61FQ1x4dR31RjT4Kf0_HCuwc9m2Swqdqu...'
+API_KEY = 'Y5Q61FQ1x4dR31RjT4Kf0_HCuwc9m2SwqdquZVXTIh...'
 
 # Create an instance of hasty helper
 h = Client(api_key=API_KEY)
@@ -39,7 +38,7 @@ DST_STATUS = 'NEW'
 
 
 # Retrieve the list of projects images
-images = proj.get_images(image_status=SRC_STATUS)
+images = list(proj.get_images(image_status=SRC_STATUS))
 
 for i,image in enumerate(images):
 

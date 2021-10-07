@@ -15,7 +15,7 @@ https://hasty.readthedocs.io/en/latest/quick_start.html#authentication
 '''
 
 # PASTE YOUR KEY here
-API_KEY = 'Y5Q61FQ1x4dR31RjT4Kf0_HCuwc9m2Sw...'
+API_KEY = 'Y5Q61FQ1x4dR31RjT4Kf0_HCuwc9m2SwqdquZVXTI...'
 
 # Create an instance of hasty helper
 h = Client(api_key=API_KEY)
@@ -42,13 +42,14 @@ label_classes = proj.get_label_classes()
 # sys.exit()
 
 # Retrieve the list of projects images
-images = proj.get_images()
+images = list(proj.get_images())
 
 def image_has_label(image, lab_id):
     labels = image.get_labels()
     return np.any([lab.class_id==lab_id for lab in labels])
 
 lab_id = 'cb88e25d-9d38-4c53-87f7-60a87cf69322' # Porcelain_Dead-end_Insulator
+# lab_id = '????' # Concrete_Pole
 
 for i,image in enumerate(images):
     # labels = image.get_labels()
