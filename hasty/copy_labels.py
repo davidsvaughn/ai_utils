@@ -25,39 +25,29 @@ print(h.get_workspaces())
 # Get Projects
 print(h.get_projects())
 
-# sys.exit()
+
+sys.exit()
 
 # Get project by id
-pid = '77ac6463-fcf4-4f82-839c-7a159b5495d2' ## <---- change this to your project id....
+pid = 'e7f563bd-bd81-416a-a12d-dca45a32f9be' ## <---- change this to your project id....
 proj = h.get_project(pid)
 print(proj)
 
+
 ## Status types are....
 ## 'NEW', 'DONE', 'SKIPPED', 'IN PROGRESS', 'TO REVIEW', 'AUTO-LABELLED'
-SRC_STATUS = 'NEW' 
-# DST_STATUS = 'IN PROGRESS'
-DST_STATUS = 'TO REVIEW'
+SRC_STATUS = 'TO REVIEW' 
+DST_STATUS = 'NEW'
 
-LAB_ID1 = 'ef970fc5-a315-4a46-9458-8554913581c9' # Fuse_Switch_Porcelain
-LAB_ID2 = 'e4904f99-3e70-451e-aa98-c9e7489ff97a' # Fuse_Switch_Polymer
-
-def image_has_label(image, lab_id):
-    labels = image.get_labels()
-    return np.any([lab.class_id==lab_id for lab in labels])
 
 # Retrieve the list of projects images
 images = list(proj.get_images(image_status=SRC_STATUS))
 
-j = 0
 for i,image in enumerate(images):
 
-    if i%10==0: print(f'{j}/{i}/{len(images)}')
+    if i%10==0: print(f'{i}/{len(images)}')
     
-    # if image_has_label(image, LAB_ID1) or image_has_label(image, LAB_ID2):
-        
-    if image.name.startswith('Davey_DJI_0_'):
-        
-        image.set_status(DST_STATUS)
-        j += 1
-        # if j>50: break
+    image.set_status(DST_STATUS)
+    
+    # if i>50: break
         

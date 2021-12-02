@@ -12,15 +12,33 @@ from pathlib import Path
 import numpy as np
 from PIL import ExifTags
 from tqdm import tqdm
+
+## convert labels exported from hasty (in COCO format, not hasty) to yolo format
+
+def mkdirs(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+def write_lines(fn, lines):
+    with open(fn, 'w') as f:
+        for line in lines:
+            f.write(f'{line}\n')
     
 def convert_hasty2yolo(json_file, save_dir):
+    global data
 
     # Import json
     fn = Path(save_dir) / 'labels'
-    fn.mkdir()
+    mkdirs(f'{fn}')
+    # fn.mkdir()
     with open(json_file) as f:
         data = json.load(f)
-
+    
+    # save class names
+    classes_file = f"{Path(save_dir) / 'classes.txt'}"
+    classes = [d['name'] for d in data['categories']]
+    write_lines(classes_file, classes)
+    
     # Create image dict
     images = {'%g' % x['id']: x for x in data['images']}
 
@@ -48,8 +66,11 @@ def convert_hasty2yolo(json_file, save_dir):
 
 if __name__ == '__main__':
     
-    hasty_json_file = '/home/david/code/phawk/data/aep/final/aep_hasty.json'
-    output_dir = '/home/david/code/phawk/data/aep/final/output'
+    # hasty_json_file = '/home/david/code/phawk/data/fpl/damage/rgb/resnet/aitower/labelsT/all_1/hasty_import_export/drc_export_4.json'
+    # output_dir = '/home/david/code/phawk/data/fpl/damage/rgb/resnet/aitower/labelsT/all_1'
     
-    convert_hasty2yolo(coco_json_file, output_dir)
+    hasty_json_file = '/home/david/code/phawk/data/generic/hasty_import_export/generic_1.json'
+    output_dir = '/home/david/code/phawk/data/generic'
+    
+    convert_hasty2yolo(hasty_json_file, output_dir)
     

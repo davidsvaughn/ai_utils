@@ -36,7 +36,7 @@ def read_lines(fn):
 def get_img_dim(img_file):
     img_dim_file = img_file.replace('.jpg','.npy')
     if os.path.isfile(img_dim_file):
-        img_dim = np.load(img_dim_file)
+        img_dim = np.load(img_dim_file)#, allow_pickle=True)
     else:
         img = cv2.imread(img_file)
         img_dim = np.array(img.shape[:2][::-1])
@@ -45,7 +45,13 @@ def get_img_dim(img_file):
     return int(width), int(height)
 
 
-data_path = '/home/david/code/phawk/data/fpl/damage/rgb/resnet/aitower/labelsT/all_1/'
+# data_path = '/home/david/code/phawk/data/fpl/damage/rgb/resnet/aitower/labelsT/all_1/'
+# class_file = data_path + 'classes.txt'
+# img_path   = data_path + 'images/'
+# label_path = data_path + 'labels/'
+# output_path  = data_path + 'coco/'
+
+data_path = '/home/david/code/phawk/data/generic/damage/'
 class_file = data_path + 'classes.txt'
 img_path   = data_path + 'images/'
 label_path = data_path + 'labels/'
@@ -53,7 +59,9 @@ output_path  = data_path + 'coco/'
 
 mkdirs(output_path)
 
-for dset in ['val', 'test', 'train']:
+# for dset in ['train']:
+for dset in ['test', 'train']:
+# for dset in ['val', 'test', 'train']:
 
     dset_file = data_path + f'{dset}.txt'
     coco_format_save_path = output_path + f'{dset}.json'
@@ -77,9 +85,8 @@ for dset in ['val', 'test', 'train']:
     file_number,num_bboxes = 1,1
     image_files = read_lines(dset_file)
     for img_file in image_files:
-          
-        #### testing.....
-        # if file_number>100: break
+        
+        img_file = ntpath.basename(img_file)
         
         #####################################
         lab_file = img_file.replace(jpg, txt)
@@ -88,6 +95,14 @@ for dset in ['val', 'test', 'train']:
         
         # height,width = cv2.imread(img_path).shape[:2]
         width,height = get_img_dim(img_path + img_file)
+        
+        ####
+        ## copy image file
+        dst_path   = data_path + f'coco/{dset}/'
+        src = img_path + img_file
+        dst = dst_path + img_file
+        copyfile(src, dst)
+        ####
         
         img_context['file_name'] = img_file
         img_context['height'] = height
