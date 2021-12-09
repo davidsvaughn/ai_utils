@@ -2,10 +2,10 @@
 import sys,os
 import json
 import random
-# install hasty library, pip install hasty
+# pip install hasty
 from hasty import Client
 import numpy as np
-# from PIL import Image, ImageDraw
+
 
 '''
 Example script to change the status of all images with a particular label...
@@ -28,29 +28,57 @@ print(h.get_workspaces())
 print(h.get_projects())
 
 # Get project by id
-pid = 'e7d489a2-a79f-46a6-b285-4df46238ff21'
+pid = 'ad88c3e7-aad2-4e2f-a0c3-e78c38845c6f' ## Solar Construction Project id
 proj = h.get_project(pid)
 print(proj)
 
+## Get label ids in hasty ...
+hasty_classes = proj.get_label_classes()
+lab_dict = {lab.id : lab.name for lab in hasty_classes}
+[print(f'{lc.id}\t{lc.name}') for lc in hasty_classes];
+
 ## Status types are....
-## 'NEW', 'DONE', 'SKIPPED', 'IN PROGRESS', 'TO REVIEW', 'AUTO-LABELLED'
-SRC_STATUS = 'NEW' 
-DST_STATUS = 'IN PROGRESS'
+NEW  = 'NEW'
+DONE = 'DONE'
+SKIP = 'SKIPPED'
+PROG = 'IN PROGRESS'
+REV  = 'TO REVIEW'
+AUTO = 'AUTO-LABELLED'
+
+SRC_STATUS = None
+# SRC_STATUS = NEW
+##
+# DST_STATUS = PROG
+DST_STATUS = SKIP
 
 # Retrieve the list of projects images
 images = list(proj.get_images(image_status=SRC_STATUS))
-random.shuffle(images)
+# random.shuffle(images)
 
-MIN_LABELS = 4
+def label_counts(labels, lab_dict):
+    cnt = { name:0 for name in lab_dict.values() }
+    for lab in labels:
+        cnt[lab_dict[lab.class_id]]+=1
+    return cnt
+
+LABEL_CLASS = 'Modules'
+LABEL_COUNT = 400
+
 j=0
-
-for i,image in enumerate(images):
-
-    if i%10==0: print(f'{j}/{i}/{len(images)}')
+for i,img in enumerate(images):
+    if i<140: continue
+    if i%10==0: print(f'{j}/{i}/{len(images)}\t{img.name}')
     
-    labels = image.get_labels()
+    if img.name[:4] in ['Clay', 'Nutm', 'Sear', 'Site']:
+        img.set_status(SKIP)
+        continue
     
-    if len(labels)>=MIN_LABELS:
-        image.set_status(DST_STATUS)
-        j+=1
+    labels = img.get_labels()
+    cnt = label_counts(labels, lab_dict)
+    if cnt[LABEL_CLASS] >= LABEL_COUNT:
+        img.set_status(REV)
+        continue
+    
+    img.set_status(DONE)
+    j+=1
         

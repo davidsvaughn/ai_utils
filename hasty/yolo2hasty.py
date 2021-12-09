@@ -10,13 +10,13 @@ from glob import glob
 
 # location of YOLO annotation info.... set these values appropriately....
 
-data_root = '/home/david/code/phawk/data/fpl/damage/rgb/resnet/aitower/labelsT/all_1/'
+data_root = '/home/david/code/phawk/data/solar/indivillage/'
 directory_images  = data_root + 'images'
 directory_labels  = data_root + 'labels'
 yolo_classes_file = data_root + 'classes.txt'
 
-project_name = 'rgb_damage_1'       ## name of hasty.ai project being imported into...
-output_file = 'data_import.json'    ## json output file name
+project_name = 'Solar Construction'       ## name of hasty.ai project being imported into...
+output_file = 'solar_import.json'    ## json output file name
 
 ###############################################################################
 
@@ -40,6 +40,7 @@ def path_leaf(path):
 def get_filenames(path, ext=jpg):
     pattern = os.path.join(path, f'*{ext}')
     return np.array([path_leaf(f) for f in glob(pattern)])
+
 
 ## initialize json object
 json_data = dict()
