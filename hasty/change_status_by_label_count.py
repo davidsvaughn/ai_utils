@@ -28,7 +28,7 @@ print(h.get_workspaces())
 print(h.get_projects())
 
 # Get project by id
-pid = 'ad88c3e7-aad2-4e2f-a0c3-e78c38845c6f' ## Solar Construction Project id
+pid = 'ac8d612c-da2f-49d6-964e-9d3149d25ff3' ## Solar Construction Project id
 proj = h.get_project(pid)
 print(proj)
 
@@ -46,10 +46,10 @@ REV  = 'TO REVIEW'
 AUTO = 'AUTO-LABELLED'
 
 SRC_STATUS = None
-# SRC_STATUS = NEW
+SRC_STATUS = SKIP
 ##
 # DST_STATUS = PROG
-DST_STATUS = SKIP
+DST_STATUS = REV
 
 # Retrieve the list of projects images
 images = list(proj.get_images(image_status=SRC_STATUS))
@@ -61,24 +61,25 @@ def label_counts(labels, lab_dict):
         cnt[lab_dict[lab.class_id]]+=1
     return cnt
 
-LABEL_CLASS = 'Modules'
-LABEL_COUNT = 400
+LABEL_CLASS = 'Inverter'
+LABEL_COUNT = 1
 
 j=0
 for i,img in enumerate(images):
-    if i<140: continue
+    # if i<140: continue
     if i%10==0: print(f'{j}/{i}/{len(images)}\t{img.name}')
     
-    if img.name[:4] in ['Clay', 'Nutm', 'Sear', 'Site']:
-        img.set_status(SKIP)
-        continue
+    # if img.name[:4] in ['Clay', 'Nutm', 'Sear', 'Site']:
+    #     img.set_status(SKIP)
+    #     continue
     
     labels = img.get_labels()
     cnt = label_counts(labels, lab_dict)
     if cnt[LABEL_CLASS] >= LABEL_COUNT:
         img.set_status(REV)
-        continue
+        j+=1
+        # continue
     
-    img.set_status(DONE)
-    j+=1
+    # img.set_status(DONE)
+    # j+=1
         

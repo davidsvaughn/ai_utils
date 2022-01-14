@@ -26,17 +26,23 @@ print(h.get_projects())
 
 
 # Get project by id
-pid = 'ad88c3e7-aad2-4e2f-a0c3-e78c38845c6f' ## Solar Construction Project id
+# pid = 'ad88c3e7-aad2-4e2f-a0c3-e78c38845c6f' ## Solar Construction
+pid = 'ac8d612c-da2f-49d6-964e-9d3149d25ff3' ## Solar Construction 2
 proj = h.get_project(pid)
 print(proj)
 
 ## Status types are....
-## 'NEW', 'DONE', 'SKIPPED', 'IN PROGRESS', 'TO REVIEW', 'AUTO-LABELLED'
-# SRC_STATUS = None
-SRC_STATUS = 'DONE' 
+NEW  = 'NEW'
+DONE = 'DONE'
+SKIP = 'SKIPPED'
+PROG = 'IN PROGRESS'
+REV  = 'TO REVIEW'
+AUTO = 'AUTO-LABELLED'
 
-DST_STATUS = 'IN PROGRESS'
-# DST_STATUS = 'TO REVIEW'
+# SRC_STATUS = None
+SRC_STATUS = [DONE, PROG, REV] 
+
+DST_STATUS = SKIP
 
 # LAB_ID1 = 'ef970fc5-a315-4a46-9458-8554913581c9' # Fuse_Switch_Porcelain
 # LAB_ID2 = 'e4904f99-3e70-451e-aa98-c9e7489ff97a' # Fuse_Switch_Polymer
@@ -50,7 +56,7 @@ images = list(proj.get_images(image_status=SRC_STATUS))
 
 j = 0
 for i,image in enumerate(images):
-    print(image.name)
+    # print(image.name)
 
     if i%10==0: print(f'{j}/{i}/{len(images)}')
     
@@ -59,5 +65,5 @@ for i,image in enumerate(images):
         
     image.set_status(DST_STATUS)
     j += 1
-    if j>53: break
+    # if j>53: break
     

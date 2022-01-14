@@ -69,8 +69,11 @@ if __name__ == '__main__':
     # hasty_json_file = '/home/david/code/phawk/data/fpl/damage/rgb/resnet/aitower/labelsT/all_1/hasty_import_export/drc_export_4.json'
     # output_dir = '/home/david/code/phawk/data/fpl/damage/rgb/resnet/aitower/labelsT/all_1'
     
-    hasty_json_file = '/home/david/code/phawk/data/generic/hasty_import_export/generic_1.json'
-    output_dir = '/home/david/code/phawk/data/generic'
+    # hasty_json_file = '/home/david/code/phawk/data/generic/hasty_import_export/generic_1.json'
+    # output_dir = '/home/david/code/phawk/data/generic'
+    
+    hasty_json_file = '/home/david/code/phawk/data/solar/indivillage/hasty/indi_1.json'
+    output_dir = '/home/david/code/phawk/data/solar/indivillage'
     
     convert_hasty2yolo(hasty_json_file, output_dir)
     
