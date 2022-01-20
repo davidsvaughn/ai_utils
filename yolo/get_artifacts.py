@@ -10,35 +10,17 @@ from json.decoder import JSONDecodeError
 from manifest_entry import ManifestEntry
 from inference_response import COCOCategory
 
-LABEL_FILTER = None
-S3_FILTER = None
+
 '''
 Use this file to download saved model artifacts (and data) after a training run... 
 It will arrange the files in the same structure as 'training_start.py' script in ai_docker.
 '''
 ''' Set the following 3 file paths appropriately.... This example is for FPL Thermal Damage... '''
 
-
-## FPL RGB Component - july8
-# DATA_DIR        = '/home/david/code/phawk/data/fpl/component'
-# MODEL_DIR       = '/home/david/code/phawk/data/fpl/component/models/july8'
-# MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/fpl-comp-1408-3008-yolov5l6-july8/'
-
-
-## generic RGB Damage
-# DATA_DIR        = '/home/david/code/phawk/data/generic/damage'
-# MODEL_DIR       = '/home/david/code/phawk/data/generic/damage'
-# MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/generic-rgb-damage-2560-3008-oct19a/'
-
-## NextEra RGB OLD
-# DATA_DIR        = '/home/david/code/phawk/data/solar/nextera/construction'
-# MODEL_DIR       = '/home/david/code/phawk/data/solar/nextera/construction'
-# MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/nextera-construction-1/'
-
 # NextEra RGB
 DATA_DIR        = '/home/david/code/phawk/data/solar/indivillage'
-MODEL_DIR       = '/home/david/code/phawk/data/solar/indivillage'
-MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/solar-construction-1536-3008-jan-12-22-p3dn/'
+MODEL_DIR       = '/home/david/code/phawk/data/solar/indivillage/models/model2'
+MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/solar-construction-2048-3200-jan-14-22-p3dn/'
 
 ## NextEra Thermal
 # DATA_DIR        = '/home/david/code/phawk/data/solar/nextera/thermal'
@@ -59,9 +41,6 @@ if MODEL_BUCKET:
 
 s3_client = boto3.client('s3')
 boto3.setup_default_session(profile_name='ph-ai-dev')  # To switch between different AWS accounts
-
-if LABEL_FILTER is not None:
-    LABEL_FILTER = np.array(LABEL_FILTER)
 
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
@@ -154,26 +133,6 @@ def download_images(img_set):
     for entry in img_set:
         executor.submit(download_image, entry)
     executor.shutdown(wait=True)
-
-def filter_labels(img_set):
-    new_set = []
-    for entry in img_set:
-        if len(entry.annotations)==0:
-            continue
-        y = np.array(entry.annotations)[:,0]
-        if not np.in1d(y, LABEL_FILTER).any():
-            continue
-        new_set.append(entry)
-    return new_set
-
-def filter_s3files(img_set):
-    new_set = []
-    for entry in img_set:
-        for s in S3_FILTER:
-            if s in entry.s3Url:
-                new_set.append(entry)
-                break
-    return new_set
         
 def write_labels(img_set, lab_dir=LAB_DIR, overwrite=True):
     for entry in img_set:
@@ -225,16 +184,6 @@ if __name__ == "__main__":
     manifest_path = download_s3_file(MANIFEST_URL, dst_dir=MODEL_DIR, overwrite=False)# True
     train_set, val_set, test_set, all_set = parse_manifest(manifest_path)
     
-    # ## remove leakage!!!
-    # train = [ntpath.split(e.s3Url)[1] for e in train_set]
-    # val = [ntpath.split(e.s3Url)[1] for e in val_set]
-    # test = [ntpath.split(e.s3Url)[1] for e in test_set]
-    # idx_val = np.where(~np.in1d(val, train))[0]
-    # idx_test = np.where(~np.in1d(test, train))[0]
-    # val_set = [val_set[i] for i in idx_val]
-    # test_set = [test_set[i] for i in idx_test]
-    # # sys.exit()
-    
     if CAT_URL:
         categories_path = download_s3_file(CAT_URL, dst_dir=MODEL_DIR, overwrite=True)
         categories = parse_categories(categories_path)
@@ -249,17 +198,12 @@ if __name__ == "__main__":
     img_sets = []
     img_sets.append((test_set, 'test'))
     img_sets.append((val_set, 'val'))
-    img_sets.append((train_set, 'train')) ## skipping train set.... usually very large
+    
+    ## comment out next line to skip train set images... sometimes very large!!!
+    img_sets.append((train_set, 'train'))
     
     for img_set in img_sets:
         img_set, name = img_set
-        # random.shuffle(img_set)
-        
-        if LABEL_FILTER is not None:
-            img_set = filter_labels(img_set)
-        
-        if S3_FILTER is not None:
-            img_set = filter_s3files(img_set)
         
         print(f'Downloading {name} set... {len(img_set)} images...')
         download_images(img_set)

@@ -49,6 +49,8 @@ def convert_hasty2yolo(json_file, save_dir):
 
         img = images['%g' % x['image_id']]
         h, w, f = img['height'], img['width'], img['file_name']
+        
+        print(f)
 
         # The COCO box format is [top left x, top left y, width, height]
         box = np.array(x['bbox'], dtype=np.float64)
@@ -72,7 +74,10 @@ if __name__ == '__main__':
     # hasty_json_file = '/home/david/code/phawk/data/generic/hasty_import_export/generic_1.json'
     # output_dir = '/home/david/code/phawk/data/generic'
     
-    hasty_json_file = '/home/david/code/phawk/data/solar/indivillage/hasty/indi_1.json'
+    # hasty_json_file = '/home/david/code/phawk/data/solar/indivillage/hasty/indi_1.json'
+    # output_dir = '/home/david/code/phawk/data/solar/indivillage'
+    
+    hasty_json_file = '/home/david/code/phawk/data/solar/indivillage/hasty/prog36.json'
     output_dir = '/home/david/code/phawk/data/solar/indivillage'
     
     convert_hasty2yolo(hasty_json_file, output_dir)

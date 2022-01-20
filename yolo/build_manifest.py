@@ -12,7 +12,7 @@ from skmultilearn.model_selection import IterativeStratification
 
 ''' Set these file paths appropriately... '''
 
-
+## example...
 DATA_DIR        = '/home/david/code/phawk/data/solar/indivillage/' ## local save directory
 MANIFEST_FILE   = DATA_DIR + 'manifest.txt'
 CATEGORIES_FILE = DATA_DIR + 'categories.json'
@@ -20,20 +20,18 @@ CLASSES_FILE    = '/home/david/code/phawk/data/solar/indivillage/classes.txt'
 LABEL_DIRS = ['/home/david/code/phawk/data/solar/indivillage/labels',]
 S3_IMG_BUCKETS   = ['s3://ai-labeling/IndiVillage/Solar/images/',]
 
-
 '''
-TRAIN/TEST/VAL split... 
-** don't need to normalize, just give *relative* weightings **
-the code will normalize so sum()==1
+TRAIN/TEST/VAL split weightings:
+- DON'T need to normalize... just give *relative* weightings ** ( the code will normalize so sum[weights]==1 )
+- If TEST or VAL weight==0, then TEST SET == VAL SET
 '''
-SPLITS = [25,6,0]
+SPLITS = [25,6,0]  ## [TRAIN,TEST,VAL] relative proportions
 
 ''' ability to filter out certain classes '''
 BLACKLIST = None
 # BLACKLIST = [2, 3, 5, 7, 15, 17, 19, 22, 23]
     
 txt,jpg = '.txt','.jpg'
-
 # jpg = '.JPG'
 
 ################################################################
@@ -127,7 +125,9 @@ def get_s3_bucket_1(path):
 def build_json_string(label_file, name='train', blacklist=None):
     y = get_labels(label_file, blacklist)
     path, x = ntpath.split(label_file)
+
     ###############################
+    #### sometimes...  .jpg ==> .JPG
     img_file = label_file.replace('/labels/','/images/').replace('.txt','.jpg')
     if not os.path.exists(img_file):
         img_file = img_file.replace('.jpg','.JPG')
@@ -136,6 +136,7 @@ def build_json_string(label_file, name='train', blacklist=None):
         sys.exit()
     _, imf = ntpath.split(img_file)
     ###############################
+
     s3bucket = get_s3_bucket_1(path)
     s3url = s3bucket + imf
         
@@ -219,6 +220,13 @@ def make_manifest():
     
     ## get stratified splits
     (X_train, y_train), (X_test, y_test), (X_val, y_val) = train_test_val_split(X, Y, SPLITS, order=2)
+
+    ## fix if empty test/val... (then: test==val)
+    if SPLITS[1]==0 or SPLITS[2]==0:
+        if len(X_test)==0:
+            X_test = X_val
+        elif len(X_val)==0:
+            X_val = X_test
     
     ## convert to manifest entries
     train_entries = build_set(X_train, name='train', blacklist=blacklist)
