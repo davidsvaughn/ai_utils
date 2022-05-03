@@ -3,7 +3,10 @@ import argparse
 import time
 import random
 import math
+from pathlib import Path
+from PIL import Image
 import numpy as np
+import copy
 from sklearn.metrics import average_precision_score, precision_recall_curve
 import torch
 import torch.nn as nn
@@ -82,7 +85,7 @@ def random_rot90(x, p):
 class Collate(object):
     pad = 10
     rot = 0
-    train = True
+    training = True
     null = False
     scale = None
     rand_scale = 0.5
@@ -94,6 +97,14 @@ class Collate(object):
     @staticmethod
     def restore():
         Collate.null = False
+    
+    @staticmethod
+    def train():
+        Collate.training = True
+
+    @staticmethod
+    def eval():
+        Collate.training = False
     
     ## used for TEST SET...
     @staticmethod
@@ -131,14 +142,14 @@ class Collate(object):
         
         ## resize...?
         if Collate.scale is not None:
-            data = [scale_img(img, Collate.scale, rand=Collate.rand_scale if Collate.train else None) for img in data]
+            data = [scale_img(img, Collate.scale, rand=Collate.rand_scale if Collate.training else None) for img in data]
          
         ## randomly rotate +-90 deg...?
-        if Collate.train and Collate.rot>0:
+        if Collate.training and Collate.rot>0:
             data = [random_rot90(img, Collate.rot) for img in data]
 
         ## orient all same....
-        if Collate.train:
+        if Collate.training:
             szs = np.array([d.shape[1:] for d in data])
             q = (szs[:,0]>szs[:,1]).mean()
             v = 1 if np.random.rand()<q else -1
@@ -161,7 +172,7 @@ class Collate(object):
 class DistributedSubsetRandomSampler(Sampler[int]):
     indices: Sequence[int]
     
-    def __init__(self, indices: Sequence[int], num_replicas=None, rank=None, shuffle=True, seed=0, drop_last=False) -> None:
+    def __init__(self, indices: Sequence[int], num_replicas=None, rank=None, shuffle=True, seed=0, drop_last=True) -> None:
         self.indices = indices
         if num_replicas is None:
             if not dist.is_available():
@@ -234,7 +245,21 @@ class DistributedSubsetRandomSampler(Sampler[int]):
             epoch (int): _epoch number.
         """
         self.epoch = epoch
-        
+
+class ImageCache(object):
+    def __init__(self):
+        self.data = {}
+    
+    def pil_loader(self, path):
+        with open(path, "rb") as f:
+            img = Image.open(f)
+            return img.convert("RGB")
+
+    def load_image(self, path):
+        if path not in self.data:
+            self.data[path] = self.pil_loader(path)
+        return self.data[path]
+      
 class ImageFolderWithPathsAndIndex(datasets.ImageFolder):
     """Custom dataset that includes image file paths. Extends torchvision.datasets.ImageFolder
     """
@@ -250,7 +275,7 @@ class ImageFolderWithPathsAndIndex(datasets.ImageFolder):
         tuple_with_path_and_index = (original_tuple + (path,) + (index,))
         return tuple_with_path_and_index
     
-def load_split_train_test(datadir, args, rank, seed, k=5, test_fold=0):
+def load_split_train_test(datadir, args, rank, seed, k=5, test_fold=0, loader=None):
 
     train_transforms = transforms.Compose([
                                         transforms.RandomHorizontalFlip(),
@@ -268,9 +293,9 @@ def load_split_train_test(datadir, args, rank, seed, k=5, test_fold=0):
                                         # transforms.Normalize(mean=[0.436, 0.45 , 0.413], std=[0.212, 0.208, 0.221]),
                                         # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
                                       ])
-
-    train_data = ImageFolderWithPathsAndIndex(datadir, transform=train_transforms)
-    test_data = ImageFolderWithPathsAndIndex(datadir, transform=test_transforms)
+    
+    train_data = ImageFolderWithPathsAndIndex(datadir, transform=train_transforms, loader=loader)
+    test_data = ImageFolderWithPathsAndIndex(datadir, transform=test_transforms, loader=loader)
 
     ## train/test split
     num_train = len(train_data)
@@ -280,6 +305,7 @@ def load_split_train_test(datadir, args, rank, seed, k=5, test_fold=0):
     train_idx = np.setdiff1d(idx, test_idx)
 
     ## train sampler
+    # train_sampler = DistributedSubsetRandomSampler(train_idx, num_replicas=4, rank=rank)
     train_sampler = DistributedSubsetRandomSampler(train_idx, num_replicas=args.world_size, rank=rank)
     trainloader = torch.utils.data.DataLoader(train_data, 
                                               sampler=train_sampler,
@@ -318,21 +344,20 @@ def train_model(rank, args):
     setup(rank, args.world_size)
     torch.cuda.set_device(rank)
     
-    #########################################
     LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/'
     REMOTE_ROOT = '/home/ubuntu/data/wood_damage/'
-    
-    ROOT = REMOTE_ROOT
+    home = str(Path.home())
+    ROOT = LOCAL_ROOT if home in LOCAL_ROOT else REMOTE_ROOT
 
     #########################################
     
-    ITEM, scale, fc, drops, print_every, rot, SEED  = 'Deteriorated', 1024, 256, [0.66,0.33], 2, 0.25, 63636
+    ITEM, scale, fc, drops, print_every, rot, SEED  = 'Deteriorated', 1024, 256, [0.66,0.33], 300, 0.25, 191919
 
-    cv_complete = False
-    K, alpha = 5, 0.5
-    args.res = 34
-    args.epochs = 32
+    cv_complete = True
+    K, alpha = 4, 0.25
     args.batch_size = 32
+    args.epochs = 5
+    args.res = 50
     
     #########################################
     DATA_ROOT = os.path.join(ROOT, 'tags')
@@ -340,8 +365,10 @@ def train_model(rank, args):
     DATA_PATH = os.path.join(DATA_ROOT, ITEM)
     MODEL_PATH = os.path.join(MODEL_ROOT, ITEM)
     MODEL_FILE = os.path.join(MODEL_PATH, f'{ITEM}.pt')
-    make_dirs(MODEL_PATH)
-    SAVE = True
+    MODEL_CHKPT = os.path.join(MODEL_PATH, f'{ITEM}_chk.pt')
+    SAVE = False
+    if rank==0:
+        make_dirs(MODEL_PATH)
 
     res, batch_size, N, LR = args.res, args.batch_size, args.freeze, args.lr
     Collate.scale, Collate.rot = scale, rot
@@ -410,13 +437,14 @@ def train_model(rank, args):
         gamma = np.exp(np.log(alpha)/args.epochs)
         lr_sched = lr_scheduler.ExponentialLR(optimizer, gamma=gamma) # 0.98
         
-        trainloader, testloader, testpathloader = load_split_train_test(DATA_PATH, args, rank, seed=SEED, k=K, test_fold=test_fold)
+        image_cache = ImageCache()
+        trainloader, testloader, testpathloader = load_split_train_test(DATA_PATH, args, rank, seed=SEED, k=K, test_fold=test_fold, loader=image_cache.load_image)
 
         ## get paths...
         Collate.disable()
         if rank==0:
             pathmap = {}
-            for data, _, paths, idx in testpathloader:
+            for _, _, paths, idx in testpathloader:
                 idx = idx.cpu().numpy()
                 for i,path in zip(idx,paths):
                     pathmap[i] = path
@@ -425,25 +453,24 @@ def train_model(rank, args):
 
         # Training
         device = next(model.parameters()).device
-        steps, frames = 0,0
         running_loss = 0
         best_f1, best_ap = 0, 0
         train_losses, test_losses = [], []
         pe = print_every
-        if pe<20:
-            pe = pe*batch_size
         
         for epoch in range(args.epochs):
             t0 = t1 = time.time()
+            frames = 0
+            train_secs, test_secs = 0,0
+            train_imgs, test_imgs = 0,0
             trainloader.sampler.set_epoch(epoch)
             
             ## test metrics more frequently in later epochs....
-            if epoch/args.epochs==0.25 :
-                pe /= 2
+            # if epoch/args.epochs==0.25 :
+            #     pe /= 2
                 
             for inputs, labels, _,_ in trainloader:
-                steps += batch_size
-                frames += batch_size
+                frames += len(labels) * args.world_size
                 inputs, labels = inputs.to(rank), labels.to(rank)
                 
                 optimizer.zero_grad()
@@ -454,16 +481,22 @@ def train_model(rank, args):
                 running_loss += loss.item()
                 
                 if frames>=pe:
+                    train_imgs += frames
+                    train_secs += time.time()-t0
+                    t0, frames = time.time(), 0
+
                     test_loss = 0
                     model.eval()
-                    Collate.train = False
+                    Collate.eval()
 
                     with torch.no_grad():
                         if rank==0:
                             t,y,p = [],[],[]
 
                         for inputs, labels, _, idx in testloader:
+                            frames += len(labels) * args.world_size
                             inputs, labels, idx = inputs.to(rank), labels.to(rank), idx.to(rank)
+                            
                             logps = model.forward(inputs)
                             batch_loss = criterion(logps, labels)
                             test_loss += batch_loss.item()
@@ -478,10 +511,16 @@ def train_model(rank, args):
                                 t.extend(labels.cpu().numpy())
                                 for i in idx.cpu().numpy():
                                     p.append(pathmap[i])
-                            
+                    
                     ##################################################
-                    fps = int(args.world_size*frames/(time.time()-t0))
-                    t0, frames, test_loss = time.time(), 0, 0
+
+                    test_imgs += frames
+                    test_secs += time.time()-t0
+                    t0, frames = time.time(), 0
+
+                    fps_train = int(train_imgs/train_secs)
+                    fps_test = int(test_imgs/test_secs)
+
                     if rank==0:
                         update_model = False
                         t,y,p = np.array(t), np.array(y), np.array(p)
@@ -507,25 +546,25 @@ def train_model(rank, args):
                             xxx = '*\t'
                             update_model = True
                         if update_model:
-                            # best_model = copy.deepcopy(model)
+                            best_model = copy.deepcopy(model)
                             if SAVE:
-                                torch.save(model.state_dict(), MODEL_FILE)
+                                torch.save(best_model.state_dict(), MODEL_CHKPT)
                             ## FPs/FNs...
                             T,Y,S,CC = t,y,p,cc
                         train_losses.append(running_loss/len(trainloader))
                         test_losses.append(test_loss/len(testloader))
                         scut = f"cut={cc:0.2g}"
                         print(f"Epoch {epoch+1}/{args.epochs}...\t"
-                            f"LOSS: {running_loss/pe:.3f} "
-                            f"/ {test_loss/len(testloader):.3f} \t"
-                            f"f1: {f1mid:.3f} ({pmid:.3f}/{rmid:.3f}){exp}\t"
+                            f"LOSS: {running_loss/pe:.4f} "
+                            f"/ {test_loss/len(testloader):.4f} \t"
+                            f"f1: {f1mid:.3f} ({pmid:.3f}/{rmid:.3f}){exp}"
                             f"AP: {ap:.3f}{xxx}"
-                            f"\tf1max: {ff1m:.3f} {scut} \t"
-                            f"{fps:.1f}FPS"
+                            f"f1max: {ff1m:.3f} {scut} \t"
+                            f"FPS:{fps_train}/{fps_test}"
                             )
                     running_loss = 0
                     model.train()
-                    Collate.train = True
+                    Collate.train()
                     
             ## end epoch...
             #######################################################
@@ -543,6 +582,8 @@ def train_model(rank, args):
             Ts.extend(T)
             Ys.extend(Y)
             Ss.extend(S)
+            if SAVE:
+                torch.save(best_model.state_dict(), MODEL_FILE)
         
         ## break CV loop ?
         if not cv_complete:

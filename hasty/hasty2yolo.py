@@ -46,6 +46,37 @@ def XYXY2xywh(xyxy,W,H):
     w,h = (x2-x1), (y2-y1)
     x,y = x1+w/2, y1+h/2
     return np.array([x/W,y/H,w/W,h/H])
+
+def xyxy2xywh(x):
+    # Convert nx4 boxes from [x1, y1, x2, y2] to [x, y, w, h] where xy1=top-left, xy2=bottom-right
+    y = np.copy(x)
+    y[:, 0] = (x[:, 0] + x[:, 2]) / 2  # x center
+    y[:, 1] = (x[:, 1] + x[:, 3]) / 2  # y center
+    y[:, 2] = x[:, 2] - x[:, 0]  # width
+    y[:, 3] = x[:, 3] - x[:, 1]  # height
+    return y
+
+def xywh2xyxy(x):
+    # Convert nx4 boxes from [x, y, w, h] to [x1, y1, x2, y2] where xy1=top-left, xy2=bottom-right
+    y = np.copy(x)
+    y[:, 0] = x[:, 0] - x[:, 2] / 2  # top left x
+    y[:, 1] = x[:, 1] - x[:, 3] / 2  # top left y
+    y[:, 2] = x[:, 0] + x[:, 2] / 2  # bottom right x
+    y[:, 3] = x[:, 1] + x[:, 3] / 2  # bottom right y
+    return y
+    
+def save_one_box(xyxy, im, file='image.jpg', gain=1.02, pad=5, BGR=False, save=True):
+    # Save image crop as {file} with crop size multiple {gain} and {pad} pixels. Save and/or return crop
+    b = xyxy2xywh(xyxy[None,:])  # boxes
+    b[:, 2:] = b[:, 2:] * gain + pad  # box wh * gain + pad
+    xyxy = xywh2xyxy(b)[0]
+    xyxy = xyxy.clip([0,0,0,0], np.hstack([im.shape[:2], im.shape[:2]])[::-1])
+    crop = im[int(xyxy[1]):int(xyxy[3]), int(xyxy[0]):int(xyxy[2]), ::(1 if BGR else -1)]
+    if save:
+        s = f'_crop-{int(xyxy[1])}-{int(xyxy[0])}.jpg'
+        file = str(file).replace('.jpg', s)
+        cv2.imwrite(file, crop)     
+    return crop
     
 # def convert_hasty2yolo(json_file, save_dir):
     
@@ -92,24 +123,53 @@ def XYXY2xywh(xyxy,W,H):
 
 if __name__ == '__main__':
     
-    json_file = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/hasty/wood_dam_ex2.json'
-    save_dir = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage'
+    json_file = '/home/david/code/phawk/data/generic/transmission/master/hasty/master_exp_4.json'
+    save_dir = '/home/david/code/phawk/data/generic/transmission/master'
     
     ##########################
     
     # convert_hasty2yolo(json_file, save_dir)
     
-    # Import json
-    lab_path = Path(save_dir) / 'labels'
     img_path = f"{Path(save_dir) / 'images'}" + '/'
+    lab_path = Path(save_dir) / 'labels'
+    lab_path = increment_path(lab_path)
     mkdirs(f'{lab_path}')
+    
+    # Import json
     with open(json_file) as f:
         data = json.load(f)
     
-    # save class names
+    ## label attributes
+    attrib_values = {}
+    for att in data['attributes']:
+        if att['type'] == 'SELECTION':
+            if att['name'].startswith('General'):
+                continue
+            attrib_values[att['name']] = ['None'] + att['values']
+    
+    ## save class names
     classes_file = f"{Path(save_dir) / 'classes.txt'}"
     classes = [d['class_name'] for d in data['label_classes']]
     write_lines(classes_file, classes)
+    
+    class_attribs = {}
+    for d in data['label_classes']:
+        for att in d['attributes']:
+            if att in attrib_values:
+                class_name = d['class_name']
+                if class_name not in class_attribs:
+                    class_attribs[class_name] = []
+                class_attribs[class_name].append(att)
+                
+    for k,vals in attrib_values.items():
+        att = k.replace(' ','_') 
+        att_path = os.path.join(save_dir, 'attribs', att)
+        mkdirs(att_path)
+        att_file = os.path.join(save_dir, 'attribs', f'{att}.txt')
+        write_lines(att_file, vals)
+        for i,_ in enumerate(vals):
+            val_path = os.path.join(att_path, f'{i}')
+            mkdirs(val_path)
     
     tags = {}
     all_files = []
@@ -126,18 +186,29 @@ if __name__ == '__main__':
             if t not in tags:
                 tags[t] = []
             tags[t].append(f)
+            
+        im = cv2.imread(img_path + f)
         
         # save object detections in yolo format
         for lab in labs:
-            box = np.array(lab['bbox'], dtype=np.float64)
-            box = XYXY2xywh(box,w,h)
+            XYXY = np.array(lab['bbox'], dtype=np.int32)
+            box = XYXY2xywh(XYXY,w,h)
             # Write
             if box[2] > 0 and box[3] > 0:  # if w > 0 and h > 0
-                cls = classes.index(lab['class_name'])
+                class_name = lab['class_name']
+                cls = classes.index(class_name)
                 line = cls, *(box)  # cls, box or segments
                 with open((lab_path / f).with_suffix('.txt'), 'a') as file:
                     file.write(('%g ' * len(line)).rstrip() % line + '\n')
-                    
+                ##
+                if class_name in class_attribs:
+                    for attrib in class_attribs[class_name]:
+                        attrib_val = lab['attributes'][attrib] if attrib in lab['attributes'] else 'None'
+                        att = attrib_values[attrib].index(attrib_val)
+                        att_path = os.path.join(save_dir, 'attribs', attrib.replace(' ','_'), f'{att}')
+                        save_one_box(XYXY, im, file=os.path.join(att_path, f), BGR=True)
+                        
+    sys.exit()
                     
     ################################
     ## setup image tag classification...
