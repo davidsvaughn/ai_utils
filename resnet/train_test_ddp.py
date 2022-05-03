@@ -352,12 +352,12 @@ def train_model(rank, args):
 
     LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/tags/'
     REMOTE_ROOT = '/home/ubuntu/data/wood_damage/tags/'
-    ITEM, scale, fc, drops, print_every, rot, SEED  = 'Deteriorated', 1024, 256, [0.66,0.33], 300, 0.25, 919191
+    ITEM, scale, fc, drops, print_every, rot, SEED  = 'Deteriorated', 1024, 256, [0.66,0.33], 300, 0.25, 191919
 
     cv_complete = True
-    K, alpha = 5, 0.1
+    K, alpha = 5, 0.25
     args.batch_size = 32
-    args.epochs = 30
+    args.epochs = 32
     args.res = 50
 
     #########################################
@@ -365,14 +365,24 @@ def train_model(rank, args):
 
     LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/master/attribs/'
     REMOTE_ROOT = '/home/ubuntu/data/attribs/'
-    ITEM, scale, fc, drops, print_every, rot, SEED  = 'Insulator_Type', 800, 256, [0.66,0.33], 128, 0.25, 191919
 
+    # Epoch 19/30...  [0.96, 0.96, 0.66, 0.94]        AP_micro: 0.953*        FPS:184/188
+    ITEM, scale, fc, drops, print_every, rot, SEED  = 'Insulator_Type', 320, 256, [0.66,0.33], 200, 0.25, 191919
     cv_complete = False
     K, alpha = 5, 0.5
-    args.batch_size = 16
-    args.epochs = 20
-    args.res = 50
+    args.batch_size = 32
+    args.epochs = 30
+    args.res = 18
 
+    #########
+
+    # Epoch 20/20...  [0.99, 0.87, 1.0]       AP_micro: 0.989*        FPS:248/265
+    # ITEM, scale, fc, drops, print_every, rot, SEED  = 'Insulator_Material', 480, 256, [0.66,0.33], 200, 0.25, 191919
+    # cv_complete = False
+    # K, alpha = 5, 0.5
+    # args.batch_size = 32
+    # args.epochs = 20
+    # args.res = 18
     
     ##################################################################################
     home = str(Path.home())
@@ -648,8 +658,8 @@ def train_model(rank, args):
                 torch.save(best_model.state_dict(), MODEL_FILE)
         
         ## break CV loop ?
-        if not cv_complete:
-            break
+        if not cv_complete: break
+        # if test_fold==3: break
         
     ## END K-FOLD LOOP...
     ###########################################################
