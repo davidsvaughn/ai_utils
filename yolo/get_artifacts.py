@@ -5,11 +5,15 @@ import glob
 import boto3
 import ntpath
 import numpy as np
+import pandas as pd
 from concurrent.futures.thread import ThreadPoolExecutor
 from json.decoder import JSONDecodeError
 from manifest_entry import ManifestEntry
 from inference_response import COCOCategory
+from collections import Counter
 
+## sometimes image train set is very large.....
+DOWNLOAD_TRAIN = True
 
 '''
 Use this file to download saved model artifacts (and data) after a training run... 
@@ -17,15 +21,54 @@ It will arrange the files in the same structure as 'training_start.py' script in
 '''
 ''' Set the following 3 file paths appropriately.... This example is for FPL Thermal Damage... '''
 
-# NextEra RGB
-DATA_DIR        = '/home/david/code/phawk/data/solar/indivillage'
-MODEL_DIR       = '/home/david/code/phawk/data/solar/indivillage/models/model2'
-MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/solar-construction-2048-3200-jan-14-22-p3dn/'
+## Solar RGB
+# DATA_DIR        = '/home/david/code/phawk/data/solar/indivillage'
+# MODEL_DIR       = '/home/david/code/phawk/data/solar/indivillage/models/model2'
+# MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/solar-construction-2048-3200-jan-14-22-p3dn/'
 
-## NextEra Thermal
-# DATA_DIR        = '/home/david/code/phawk/data/solar/nextera/thermal'
-# MODEL_DIR       = '/home/david/code/phawk/data/solar/nextera/thermal'
+## Solar Thermal
+# DATA_DIR        = '/home/david/code/phawk/data/solar/thermal'
+# MODEL_DIR       = '/home/david/code/phawk/data/solar/thermal/models/model1'
 # MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/nextera-thermal-1/'
+
+## FPL Damage
+# DATA_DIR        = '/home/david/code/phawk/data/generic/distribution/models/rgb/damage'
+# # MODEL_DIR       = '/home/david/code/phawk/data/generic/distribution/models/rgb/damage/oct15a'
+# # MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/dist-rgb-damage-2048-2560-oct15a/'
+# MODEL_DIR       = '/home/david/code/phawk/data/generic/distribution/models/rgb/damage/oct19a'
+# MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/generic-rgb-damage-2560-3008-oct19a/'
+
+## Claire Transmission Data
+# DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/claire'
+# MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/claire'
+# MODEL_BUCKET    = 's3://ai-labeling/transmission/manifests/extracted_from_image_filenames/'
+# DOWNLOAD_TRAIN  = True
+
+########################################################3
+## Transmission ##
+
+# Transmission Master
+# DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/master'
+# MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/master/model/model2'
+# MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/transmission-master-3008-2c/'
+
+## Insulator Damage
+DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/damage/insulator_damage'
+MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/damage/insulator_damage/models/model1'
+MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/insulator-damage-1280-5m6-freeze3/'
+
+## Wood Damage
+# DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage'
+# MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/models/model2'
+# MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/wood-damage-2048-a/'
+
+########################################################3
+## Solar ##
+
+## Pseudo-Thermal
+# DATA_DIR        = '/home/david/code/phawk/data/solar/thermal/component'
+# MODEL_DIR       = '/home/david/code/phawk/data/solar/thermal/component/models/model3'
+# MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/solar-pseudo-thermal-3/'
 
 #-----------------------------------------------
 IMG_DIR = '{}/images'.format(DATA_DIR)
@@ -35,6 +78,8 @@ if MODEL_BUCKET:
     MODEL_WTS_URL   = MODEL_BUCKET + 'weights.pt'
     CFG_URL         = MODEL_BUCKET + 'hyp.yaml'
     CAT_URL         = MODEL_BUCKET + 'categories.json'
+    OUTPUT_LOG      = MODEL_BUCKET + 'output.log'
+    JOB_JSON        = MODEL_BUCKET + 'job.json'
     TESTLOG_URL     = MODEL_BUCKET + 'test.txt'
 
 #-------------------------------------------------
@@ -154,12 +199,12 @@ def write_set(set_path, img_set):
         for entry in img_set:
             f.write(f'{IMG_DIR}/{entry.image_file_name()}\n')
             
-def write_coco_names(categories, dst_dir=DATA_DIR):
-    coco_names_filename = f'{dst_dir}/coco.names'
-    if os.path.exists(coco_names_filename):
-        os.remove(coco_names_filename)
+def write_class_names(categories, dst_dir=DATA_DIR):
+    class_names_filename = f'{dst_dir}/classes.txt'
+    if os.path.exists(class_names_filename):
+        os.remove(class_names_filename)
     labels = []
-    with open(coco_names_filename, 'a') as f:
+    with open(class_names_filename, 'a') as f:
         for category in categories:
             name = category.name
             labels.append(name)
@@ -177,6 +222,24 @@ def write_data_yaml(labels, dst_dir=DATA_DIR):
         f.write(f'# Number of classes in dataset:\nnc: {len(labels)}\n\n')
         f.write(f'# Class names:\nnames: {json.dumps(labels)}')
 
+## input: manifest entries
+def label_matrix(img_set, dim=None):
+    Y = []
+    for m in img_set:
+        labs = m.annotations
+        Y.append([y[0] for y in labs])
+    if dim is None:
+        n = max([max(y) for y in Y if len(y)>0]) + 1
+    else:
+        n = dim
+    Z = []
+    for y in Y:
+        z = np.zeros(n)
+        for k,v in Counter(y).items():
+            z[k] = v
+        Z.append(z)
+    return np.array(Z)
+
 ###################################################################
 
 if __name__ == "__main__":
@@ -185,22 +248,23 @@ if __name__ == "__main__":
     train_set, val_set, test_set, all_set = parse_manifest(manifest_path)
     
     if CAT_URL:
-        categories_path = download_s3_file(CAT_URL, dst_dir=MODEL_DIR, overwrite=True)
+        categories_path = download_s3_file(CAT_URL, dst_dir=MODEL_DIR, overwrite=False)
         categories = parse_categories(categories_path)
-        labels = write_coco_names(categories, dst_dir=MODEL_DIR)
+        labels = write_class_names(categories, dst_dir=MODEL_DIR)
         write_data_yaml(labels, dst_dir=MODEL_DIR)
         
     if MODEL_BUCKET:
         model_path = download_s3_file(MODEL_WTS_URL, dst_dir=MODEL_DIR, overwrite=False)# True
         cfg_path = download_s3_file(CFG_URL, dst_dir=MODEL_DIR, overwrite=True)
         download_s3_file(TESTLOG_URL, dst_dir=MODEL_DIR, filename='testlog.txt', overwrite=True)
+        download_s3_file(OUTPUT_LOG, dst_dir=MODEL_DIR, filename='output.log', overwrite=True)
+        download_s3_file(JOB_JSON, dst_dir=MODEL_DIR, filename='job.json', overwrite=True)
     
     img_sets = []
     img_sets.append((test_set, 'test'))
     img_sets.append((val_set, 'val'))
-    
-    ## comment out next line to skip train set images... sometimes very large!!!
-    img_sets.append((train_set, 'train'))
+    if DOWNLOAD_TRAIN:
+        img_sets.append((train_set, 'train'))
     
     for img_set in img_sets:
         img_set, name = img_set
@@ -217,3 +281,37 @@ if __name__ == "__main__":
         write_labels(img_set)
         img_set_path = f'{MODEL_DIR}/{name}.txt'
         write_set(img_set_path, img_set)
+
+    ######################################
+    ## print stats
+    dim = len(labels)
+    y_train = label_matrix(train_set, dim)
+    y_val = label_matrix(val_set, dim)
+    y_test = label_matrix(test_set, dim)
+    
+    df_image_counts = pd.DataFrame({'TRAIN': y_train.astype(bool).sum(0),
+                                    'TEST': y_test.astype(bool).sum(0),
+                                    'VAL': y_val.astype(bool).sum(0)}, 
+                                   index = labels) 
+    
+    df_target_counts = pd.DataFrame({'TRAIN': y_train.astype(np.int32).sum(0),
+                                     'TEST': y_test.astype(np.int32).sum(0),
+                                     'VAL': y_val.astype(np.int32).sum(0)}, 
+                                    index = labels)
+    
+    stats_path = f'{MODEL_DIR}/manifest_stats.txt'
+    original_stdout = sys.stdout
+    for i in range(2):
+        with open(stats_path, 'w') as f:
+            if i==1: sys.stdout = f
+            #####
+            print('\nIMAGE COUNTS PER SET/CLASS:')
+            print(df_image_counts.to_markdown())
+            print('\nTARGET COUNTS PER SET/CLASS:')
+            print(df_target_counts.to_markdown())
+            print('\nIMAGE COUNTS PER SET:')
+            print('TRAIN\t| {}'.format(y_train.shape[0]))
+            print('TEST \t| {}'.format(y_test.shape[0]))
+            print('VAL  \t| {}'.format(y_val.shape[0]))
+            #####
+            if i==1: sys.stdout = original_stdout

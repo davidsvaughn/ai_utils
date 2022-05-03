@@ -6,8 +6,14 @@ from concurrent.futures.thread import ThreadPoolExecutor
 s3_client = boto3.client('s3')
 boto3.setup_default_session(profile_name='ph-ai-dev')  ## <---- change this?
 
-img_path = '/home/david/code/phawk/data/solar/indivillage/images/'
-s3_path = 's3://ai-labeling/IndiVillage/Solar/images/'
+# img_path = '/home/david/code/phawk/data/solar/indivillage/images/'
+# s3_path = 's3://ai-labeling/IndiVillage/Solar/images/'
+
+img_path = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/images/'
+s3_path = 's3://ai-labeling/transmission/images/wood/'
+
+# img_path = '/home/david/code/phawk/data/generic/transmission/master/images/'
+# s3_path = 's3://ph-dvaughn-dev/transmission/data/master/images/'
 
 #----------------------------------------------------------------------
 

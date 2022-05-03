@@ -10,13 +10,15 @@ from glob import glob
 
 # location of YOLO annotation info.... set these values appropriately....
 
-data_root = '/home/david/code/phawk/data/solar/indivillage/'
-directory_images  = data_root + 'images'
-directory_labels  = data_root + 'labels'
+data_root = '/home/david/code/phawk/data/generic/transmission/nisource/detect/claire/'
 yolo_classes_file = data_root + 'classes.txt'
+directory_labels  = data_root + 'labels'
+# directory_images  = data_root + 'images'
+directory_images  = '/home/david/code/phawk/data/generic/transmission/nisource/images'
 
-project_name = 'Solar Construction'       ## name of hasty.ai project being imported into...
-output_file = 'solar_import.json'    ## json output file name
+
+project_name = 'Transmission NiSource'       ## name of hasty.ai project being imported into...
+output_file = 'claire_import.json'    ## json output file name
 
 ###############################################################################
 
@@ -53,8 +55,10 @@ json_data['attributes']= []
 with open(yolo_classes_file,'r') as f:
     classes = [s.strip() for s in f.readlines()]
 label_classes = []
-for label in classes:
-    label_classes.append({'class_name':label, 'class_type': 'object', 'attributes': []})
+for i,label in enumerate(classes):
+    label_classes.append({'class_name':label, 'class_type': 'object' })
+    # label_classes.append({'class_name':label, 'class_type': 'object', 'attributes': []})
+    # label_classes.append({'class_name':label, 'class_type': 'object', 'norder':i+1, 'attributes': []})
 json_data['label_classes'] = label_classes
 
 # loop over images/labels
@@ -94,13 +98,15 @@ for filename in img_files:
     for i,line in enumerate(labs): # for loop runs for number of annotations labelled in an image
         line = line.split(' ')
         bbox_dict = {}
-        class_id, x_yolo,y_yolo,width_yolo,height_yolo= line[0:]
+        class_id, x_yolo,y_yolo,width_yolo,height_yolo= line[0:5]
         x_yolo,y_yolo,width_yolo,height_yolo,class_id= float(x_yolo),float(y_yolo),float(width_yolo),float(height_yolo),int(class_id)
         h,w = abs(height_yolo*height),abs(width_yolo*width)
         x1 = int(round(x_yolo*width -(w/2)))
         y1 = int(round(y_yolo*height -(h/2)))
         x2 = int(round(x_yolo*width +(w/2)))
         y2 = int(round(y_yolo*height +(h/2)))
+        x1,y1 = max(x1,0),max(y1,0)
+        x2,y2 = min(x2,width), min(y2,height)
         bbox_dict['class_name'] = classes[int(class_id)]
         bbox_dict['attributes'] = {}
         bbox_dict['bbox'] = [x1,y1,x2,y2]
