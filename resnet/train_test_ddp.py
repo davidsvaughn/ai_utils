@@ -1,5 +1,4 @@
-import os
-import sys
+import os, sys
 import argparse
 import time
 import random
@@ -9,7 +8,7 @@ from sklearn.metrics import average_precision_score, precision_recall_curve
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torchvision
+from typing import Iterator, Sequence
 import torchvision.transforms as transforms
 from torchvision import datasets, transforms, models
 import torch.nn.functional as F
@@ -77,12 +76,12 @@ def random_rot90(x, p):
     return x
 
 class Collate(object):
-    scale = None
-    rand_scale = 0.5
     pad = 10
     rot = 0
     train = True
     null = False
+    scale = None
+    rand_scale = 0.5
 
     @staticmethod
     def disable():
@@ -155,12 +154,10 @@ class Collate(object):
 
         return [data, labels, paths, idx]
 
-from typing import Iterator, Iterable, Optional, Sequence, List, TypeVar, Generic, Sized, Union
-
 class DistributedSubsetRandomSampler(Sampler[int]):
     indices: Sequence[int]
     
-    def __init__(self, indices: Sequence[int], num_replicas=None, rank=None, shuffle=True, seed=0, drop_last=True) -> None:
+    def __init__(self, indices: Sequence[int], num_replicas=None, rank=None, shuffle=True, seed=0, drop_last=False) -> None:
         self.indices = indices
         if num_replicas is None:
             if not dist.is_available():
@@ -323,12 +320,13 @@ def train_model(rank, args):
     
     DATA_ROOT = LOCAL_ROOT
     
-    cv_complete = False
-    K, epochs, alpha = 5, 16, 0.5
-    ITEM, scale, fc, drops, print_every, rot, SEED  = 'Deteriorated', 1024, 256, [0.66,0.33], 4, 0.25, 1234
+    ITEM, scale, fc, drops, print_every, rot, SEED  = 'Deteriorated', 1024, 256, [0.66,0.33], 4, 0, 1234
 
-    args.res = 18
-    args.batch_size = 16
+    cv_complete = False
+    K, alpha = 5, 0.5
+    args.res = 34
+    args.epochs = 32
+    args.batch_size = 32
     
     #########################################
     res, batch_size, N, LR = args.res, args.batch_size, args.freeze, args.lr
@@ -439,8 +437,6 @@ def train_model(rank, args):
                 running_loss += loss.item()
                 
                 if frames>=pe:
-                    # fps = int(args.world_size*frames/(time.time()-t0))
-                    # t0, frames, test_loss = time.time(), 0, 0
                     test_loss = 0
                     model.eval()
                     Collate.train = False
@@ -466,7 +462,7 @@ def train_model(rank, args):
                                 for i in idx.cpu().numpy():
                                     p.append(pathmap[i])
                             
-                    ##################################
+                    ##################################################
                     fps = int(args.world_size*frames/(time.time()-t0))
                     t0, frames, test_loss = time.time(), 0, 0
                     if rank==0:
@@ -572,7 +568,7 @@ def run_train_model(train_func, world_size):
     parser = argparse.ArgumentParser("PyTorch - Training ResNet101 on CIFAR10 Dataset")
     parser.add_argument('--world_size', type=int, default=world_size, help='total number of processes')
     parser.add_argument('--lr', default=0.001, type=float, help='Default Learning Rate')
-    parser.add_argument('--batch_size', type=int, default=32, help='size of the batches')
+    parser.add_argument('--batch_size', type=int, default=16, help='size of the batches')
     parser.add_argument('--epochs', type=int, default=20, help='Total number of epochs for training')
     parser.add_argument('--res', type=int, default=34, help='ResNet model (18,34,50,101)')
     parser.add_argument('--freeze', type=int, default=7, help='')
