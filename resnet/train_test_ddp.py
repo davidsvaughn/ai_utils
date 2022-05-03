@@ -42,6 +42,10 @@ def set_random_seeds(random_seed=0):
     np.random.seed(random_seed)
     random.seed(random_seed)
 
+def make_dirs(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+
 def scale_img_1d(img, scale):
     if scale<0:
         scale = -scale
@@ -315,12 +319,14 @@ def train_model(rank, args):
     torch.cuda.set_device(rank)
     
     #########################################
-    LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/tags/'
-    REMOTE_ROOT = '/home/ubuntu/data/wood_damage/tags/'
+    LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/'
+    REMOTE_ROOT = '/home/ubuntu/data/wood_damage/'
     
-    DATA_ROOT = LOCAL_ROOT
+    ROOT = REMOTE_ROOT
+
+    #########################################
     
-    ITEM, scale, fc, drops, print_every, rot, SEED  = 'Deteriorated', 1024, 256, [0.66,0.33], 4, 0, 1234
+    ITEM, scale, fc, drops, print_every, rot, SEED  = 'Deteriorated', 1024, 256, [0.66,0.33], 2, 0.25, 63636
 
     cv_complete = False
     K, alpha = 5, 0.5
@@ -329,16 +335,27 @@ def train_model(rank, args):
     args.batch_size = 32
     
     #########################################
-    res, batch_size, N, LR = args.res, args.batch_size, args.freeze, args.lr
+    DATA_ROOT = os.path.join(ROOT, 'tags')
+    MODEL_ROOT = os.path.join(ROOT, 'models')
     DATA_PATH = os.path.join(DATA_ROOT, ITEM)
+    MODEL_PATH = os.path.join(MODEL_ROOT, ITEM)
+    MODEL_FILE = os.path.join(MODEL_PATH, f'{ITEM}.pt')
+    make_dirs(MODEL_PATH)
+    SAVE = True
+
+    res, batch_size, N, LR = args.res, args.batch_size, args.freeze, args.lr
     Collate.scale, Collate.rot = scale, rot
 
-    set_random_seeds(random_seed=SEED)
+    # set_random_seeds(random_seed=SEED)
     if rank==0:
         Ts,Ys,Ss = [],[],[]
         print(f'SEED={SEED}')
     
     for test_fold in range(K):
+
+        set_random_seeds(random_seed=SEED)
+        # test_fold = K-1
+
         if rank==0:
             print(f'\nCV FOLD {test_fold+1}/{K}')
 
@@ -390,7 +407,7 @@ def train_model(rank, args):
         criterion = nn.NLLLoss().to(rank)
         optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=LR, amsgrad=True)
 
-        gamma = np.exp(np.log(alpha)/epochs)
+        gamma = np.exp(np.log(alpha)/args.epochs)
         lr_sched = lr_scheduler.ExponentialLR(optimizer, gamma=gamma) # 0.98
         
         trainloader, testloader, testpathloader = load_split_train_test(DATA_PATH, args, rank, seed=SEED, k=K, test_fold=test_fold)
@@ -491,14 +508,14 @@ def train_model(rank, args):
                             update_model = True
                         if update_model:
                             # best_model = copy.deepcopy(model)
-                            # if SAVE:
-                            #     torch.save(best_model.state_dict(), MODEL_PATH + f'{ITEM.lower()}.pt')
+                            if SAVE:
+                                torch.save(model.state_dict(), MODEL_FILE)
                             ## FPs/FNs...
                             T,Y,S,CC = t,y,p,cc
                         train_losses.append(running_loss/len(trainloader))
                         test_losses.append(test_loss/len(testloader))
                         scut = f"cut={cc:0.2g}"
-                        print(f"Epoch {epoch+1}/{epochs}...\t"
+                        print(f"Epoch {epoch+1}/{args.epochs}...\t"
                             f"LOSS: {running_loss/pe:.3f} "
                             f"/ {test_loss/len(testloader):.3f} \t"
                             f"f1: {f1mid:.3f} ({pmid:.3f}/{rmid:.3f}){exp}\t"
@@ -568,7 +585,7 @@ def run_train_model(train_func, world_size):
     parser = argparse.ArgumentParser("PyTorch - Training ResNet101 on CIFAR10 Dataset")
     parser.add_argument('--world_size', type=int, default=world_size, help='total number of processes')
     parser.add_argument('--lr', default=0.001, type=float, help='Default Learning Rate')
-    parser.add_argument('--batch_size', type=int, default=16, help='size of the batches')
+    parser.add_argument('--batch_size', type=int, default=32, help='size of the batches')
     parser.add_argument('--epochs', type=int, default=20, help='Total number of epochs for training')
     parser.add_argument('--res', type=int, default=34, help='ResNet model (18,34,50,101)')
     parser.add_argument('--freeze', type=int, default=7, help='')
