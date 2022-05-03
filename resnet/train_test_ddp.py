@@ -334,14 +334,18 @@ def load_split_train_test(datadir, args, rank, seed, k=5, test_fold=0, loader=No
                         
     return trainloader, testloader, testpathloader
 
-def gather_tensors(t, device, rank, world_size):
+def gather_tensors(t, device, world_size):
+    if world_size==1:
+        return t
     out_t = [torch.zeros_like(t, device=device) for _ in range(world_size)]
     dist.all_gather(out_t, t)
     return torch.cat(out_t, 0)
 
 def train_model(rank, args):
-    print(f"Running Distributed ResNet on rank {rank}.")
-    setup(rank, args.world_size)
+    ddp = args.world_size>1
+    if ddp:
+        print(f"Running Distributed ResNet on rank {rank}.")
+        setup(rank, args.world_size)
     torch.cuda.set_device(rank)
     
     LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/'
@@ -370,7 +374,7 @@ def train_model(rank, args):
     if rank<1:
         make_dirs(MODEL_PATH)
 
-    res, batch_size, N, LR = args.res, args.batch_size, args.freeze, args.lr
+    res, N, LR = args.res, args.freeze, args.lr
     Collate.scale, Collate.rot = scale, rot
 
     # set_random_seeds(random_seed=SEED)
@@ -427,7 +431,10 @@ def train_model(rank, args):
         
         # model = model.to(rank)
         # wraps the network around distributed package
-        model = DDP(model.to(rank), device_ids=[rank])
+        if ddp:
+            model = DDP(model.to(rank), device_ids=[rank])
+        else:
+            model = model.to(rank)
         
         ## Loss and Optimizer
         criterion = nn.NLLLoss().to(rank)
@@ -499,9 +506,9 @@ def train_model(rank, args):
                             ps = torch.exp(logps)
 
                             ## gather outputs from all DDP processes...
-                            ps = gather_tensors(ps, device, rank, args.world_size)
-                            targets = gather_tensors(labels, device, rank, args.world_size)
-                            idx = gather_tensors(idx, device, rank, args.world_size)
+                            ps = gather_tensors(ps, device, args.world_size)
+                            targets = gather_tensors(labels, device, args.world_size)
+                            idx = gather_tensors(idx, device, args.world_size)
 
                             if rank<1:
                                 frames += len(targets)
@@ -617,8 +624,8 @@ def train_model(rank, args):
               f"\tF1: {f1b:.3f} ({pb:.3f}/{rb:.3})\tcut={cutb:0.3g}\n"
               f"\tF1: {f1max:.3f} ({pm:.3f}/{rm:.3})\tcut={CC:0.3g}\n"
               )
-
-    cleanup()
+    if ddp:
+        cleanup()
 
 
 def run_train_model(train_func, world_size):
@@ -633,9 +640,11 @@ def run_train_model(train_func, world_size):
     args = parser.parse_args()
     print(args)
 
-    # this is responsible for spawning 'nprocs' number of processes of the train_func function with the given
-    # arguments as 'args'
-    mp.spawn(train_func, args=(args,), nprocs=args.world_size, join=True)
+    # this is responsible for spawning 'nprocs' number of processes of the train_func function with the given arguments as 'args'
+    if world_size>1:
+        mp.spawn(train_func, args=(args,), nprocs=args.world_size, join=True)
+    else:
+        train_func(rank=0, args=args)
 
 
 if __name__ == "__main__":
