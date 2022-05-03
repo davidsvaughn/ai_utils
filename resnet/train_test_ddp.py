@@ -363,15 +363,15 @@ def train_model(rank, args):
     #########################################
 
 
-    # LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/master/attribs/'
-    # REMOTE_ROOT = '/home/ubuntu/data/attribs/'
-    # ITEM, scale, fc, drops, print_every, rot, SEED  = 'Insulator_Type', 640, 256, [0.66,0.33], 128, 0.25, 191919
+    LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/master/attribs/'
+    REMOTE_ROOT = '/home/ubuntu/data/attribs/'
+    ITEM, scale, fc, drops, print_every, rot, SEED  = 'Insulator_Type', 800, 256, [0.66,0.33], 128, 0.25, 191919
 
-    # cv_complete = False
-    # K, alpha = 4, 0.5
-    # args.batch_size = 16
-    # args.epochs = 10
-    # args.res = 18
+    cv_complete = False
+    K, alpha = 5, 0.5
+    args.batch_size = 16
+    args.epochs = 20
+    args.res = 50
 
     
     ##################################################################################
@@ -524,7 +524,8 @@ def train_model(rank, args):
                                 frames += len(targets)
                                 batch_loss = criterion(logps, labels)
                                 test_loss += batch_loss.item()
-                                y.extend(ps[:,1].cpu().numpy())
+                                # y.extend(ps[:,1].cpu().numpy())
+                                y.append(ps.cpu().numpy())
                                 t.extend(targets.cpu().numpy())
                                 for i in idx.cpu().numpy():
                                     p.append(pathmap[i])
@@ -539,45 +540,89 @@ def train_model(rank, args):
                         fps_test = int(test_imgs/test_secs)
 
                         update_model = False
-                        t,y,p = np.array(t), np.array(y), np.array(p)
-                        idx = np.argsort(-y)
-                        t,y,p = t[idx],y[idx],p[idx]
-                        
-                        ## ap
-                        ap = average_precision_score(t, y)
-                        pp,rr,tt = precision_recall_curve(t, y)
-                        ff1 = 2*pp*rr/(pp+rr+1e-16)
-                        ff1m = ff1.max()
-                        cc = tt[ff1.argmax()]
-                        imid = abs(tt-0.5).argmin()
-                        f1mid,pmid,rmid = ff1[imid],pp[imid],rr[imid]
-                        
-                        exp = ' \t'
-                        if f1mid > best_f1: # F1m
-                            best_f1 = f1mid # F1m
-                            exp = '*\t'
-                        xxx = ' \t'
-                        if ap > best_ap:
-                            best_ap = ap
-                            xxx = '*\t'
-                            update_model = True
-                        if update_model:
-                            best_model = copy.deepcopy(model)
-                            if SAVE:
-                                torch.save(best_model.state_dict(), MODEL_CHKPT)
-                            ## FPs/FNs...
-                            T,Y,S,CC = t,y,p,cc
-                        train_losses.append(running_loss/len(trainloader))
-                        test_losses.append(test_loss/len(testloader))
-                        scut = f"cut={cc:0.2g}"
-                        print(f"Epoch {epoch+1}/{args.epochs}...\t"
-                            f"LOSS: {running_loss/pe:.4f} "
-                            f"/ {test_loss/len(testloader):.4f} \t"
-                            f"f1: {f1mid:.3f} ({pmid:.3f}/{rmid:.3f}){exp}"
-                            f"AP: {ap:.3f}{xxx}"
-                            f"f1max: {ff1m:.3f} {scut} \t"
-                            f"FPS:{fps_train}/{fps_test}"
-                            )
+                        t,p = np.array(t), np.array(p)
+                        y = np.vstack(y)
+                        ##########################################
+                        ## https://stats.stackexchange.com/questions/534431/calculating-area-under-the-precision-recall-curve-with-multiclass
+
+                        if num_class>2:
+                            precision = dict()
+                            recall = dict()
+                            average_precision = dict()
+                            aps = []
+                            for i in range(num_class):
+                                ti, yi = (t==i)+0, y[:,i]
+                                precision[i], recall[i], _ = precision_recall_curve(ti, yi)
+                                average_precision[i] = average_precision_score(ti, yi)
+                                aps.append(average_precision[i])
+
+                            # A "micro-average": quantifying score on all classes jointly
+                            Y_test = (t[:,None]==np.arange(num_class)[None,:])*1
+                            precision["micro"], recall["micro"], _ = precision_recall_curve(Y_test.ravel(), y.ravel())
+                            average_precision["micro"] = average_precision_score(Y_test, y, average="micro")
+                            # print('Average precision score, micro-averaged over all classes: {0:0.2f}'.format(average_precision["micro"]))
+
+                            ap = average_precision["micro"]
+                            aps = np.array(aps).round(2).tolist()
+
+                            xxx = ' \t'
+                            if ap > best_ap:
+                                best_ap = ap
+                                xxx = '*\t'
+                                update_model = True
+                            if update_model:
+                                best_model = copy.deepcopy(model)
+                                if SAVE:
+                                    torch.save(best_model.state_dict(), MODEL_CHKPT)
+                                ## FPs/FNs...
+                                T,Y,S,CC = t,y,p,0
+                            print(f"Epoch {epoch+1}/{args.epochs}...\t"
+                                f"{aps}\t"
+                                f"AP_micro: {ap:.3f}{xxx}"
+                                f"FPS:{fps_train}/{fps_test}"
+                                )
+
+                        ##########################################
+                        else:
+                            y = y[:,1]
+                            idx = np.argsort(-y)
+                            t,y,p = t[idx],y[idx],p[idx]
+                            
+                            ## ap
+                            ap = average_precision_score(t, y)
+                            pp,rr,tt = precision_recall_curve(t, y)
+                            ff1 = 2*pp*rr/(pp+rr+1e-16)
+                            ff1m = ff1.max()
+                            cc = tt[ff1.argmax()]
+                            imid = abs(tt-0.5).argmin()
+                            f1mid,pmid,rmid = ff1[imid],pp[imid],rr[imid]
+                            
+                            exp = ' \t'
+                            if f1mid > best_f1: # F1m
+                                best_f1 = f1mid # F1m
+                                exp = '*\t'
+                            xxx = ' \t'
+                            if ap > best_ap:
+                                best_ap = ap
+                                xxx = '*\t'
+                                update_model = True
+                            if update_model:
+                                best_model = copy.deepcopy(model)
+                                if SAVE:
+                                    torch.save(best_model.state_dict(), MODEL_CHKPT)
+                                ## FPs/FNs...
+                                T,Y,S,CC = t,y,p,cc
+                            train_losses.append(running_loss/len(trainloader))
+                            test_losses.append(test_loss/len(testloader))
+                            scut = f"cut={cc:0.2g}"
+                            print(f"Epoch {epoch+1}/{args.epochs}...\t"
+                                f"LOSS: {running_loss/pe:.4f} "
+                                f"/ {test_loss/len(testloader):.4f} \t"
+                                f"f1: {f1mid:.3f} ({pmid:.3f}/{rmid:.3f}){exp}"
+                                f"AP: {ap:.3f}{xxx}"
+                                f"f1max: {ff1m:.3f} {scut} \t"
+                                f"FPS:{fps_train}/{fps_test}"
+                                )
                     ### end eval ##########
                     model.train()
                     Collate.train()
