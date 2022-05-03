@@ -347,33 +347,45 @@ def train_model(rank, args):
         print(f"Running Distributed ResNet on rank {rank}.")
         setup(rank, args.world_size)
     torch.cuda.set_device(rank)
-    
-    LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/'
-    REMOTE_ROOT = '/home/ubuntu/data/wood_damage/'
-    home = str(Path.home())
-    ROOT = LOCAL_ROOT if home in LOCAL_ROOT else REMOTE_ROOT
 
-    #########################################
-    
-    ITEM, scale, fc, drops, print_every, rot, SEED  = 'Deteriorated', 1024, 256, [0.66,0.33], 300, 0.25, 191919
+    ##################################################################################
+
+    LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/tags/'
+    REMOTE_ROOT = '/home/ubuntu/data/wood_damage/tags/'
+    ITEM, scale, fc, drops, print_every, rot, SEED  = 'Deteriorated', 1024, 256, [0.66,0.33], 300, 0.25, 919191
 
     cv_complete = True
-    K, alpha = 5, 0.25
+    K, alpha = 5, 0.1
     args.batch_size = 32
-    args.epochs = 20
+    args.epochs = 30
     args.res = 50
-    
+
     #########################################
-    DATA_ROOT = os.path.join(ROOT, 'tags')
-    MODEL_ROOT = os.path.join(ROOT, 'models')
-    DATA_PATH = os.path.join(DATA_ROOT, ITEM)
-    MODEL_PATH = os.path.join(MODEL_ROOT, ITEM)
+
+
+    # LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/master/attribs/'
+    # REMOTE_ROOT = '/home/ubuntu/data/attribs/'
+    # ITEM, scale, fc, drops, print_every, rot, SEED  = 'Insulator_Type', 640, 256, [0.66,0.33], 128, 0.25, 191919
+
+    # cv_complete = False
+    # K, alpha = 4, 0.5
+    # args.batch_size = 16
+    # args.epochs = 10
+    # args.res = 18
+
+    
+    ##################################################################################
+    home = str(Path.home())
+    ROOT = LOCAL_ROOT if home in LOCAL_ROOT else REMOTE_ROOT
+    DATA_PATH = os.path.join(ROOT, ITEM)
+    MODEL_PATH = os.path.join(ROOT, 'models', ITEM)
     MODEL_FILE = os.path.join(MODEL_PATH, f'{ITEM}.pt')
     MODEL_CHKPT = os.path.join(MODEL_PATH, f'{ITEM}_chk.pt')
     SAVE = True
     if rank<1:
         make_dirs(MODEL_PATH)
 
+    num_class = len(os.listdir(DATA_PATH))
     res, N, LR = args.res, args.freeze, args.lr
     Collate.scale, Collate.rot = scale, rot
 
@@ -424,14 +436,12 @@ def train_model(rank, args):
             model.fc = nn.Sequential(nn.Linear(num_ftrs, fc),
                                       nn.ReLU(),
                                       nn.Dropout(drop2),
-                                      nn.Linear(fc, 2),
+                                      nn.Linear(fc, num_class),
                                       nn.LogSoftmax(dim=1))
         else:
-            model.fc = nn.Sequential(nn.Linear(num_ftrs, 2), nn.LogSoftmax(dim=1))
+            model.fc = nn.Sequential(nn.Linear(num_ftrs, num_class), nn.LogSoftmax(dim=1))
         
-        # model = model.to(rank)
-        # wraps the network around distributed package
-        if ddp:
+        if ddp: # wraps the network around distributed package
             model = DDP(model.to(rank), device_ids=[rank])
         else:
             model = model.to(rank)
@@ -443,8 +453,8 @@ def train_model(rank, args):
         gamma = np.exp(np.log(alpha)/args.epochs)
         lr_sched = lr_scheduler.ExponentialLR(optimizer, gamma=gamma) # 0.98
         
-        image_cache = ImageCache()
-        trainloader, testloader, testpathloader = load_split_train_test(DATA_PATH, args, rank, seed=SEED, k=K, test_fold=test_fold, loader=image_cache.load_image)
+        # image_cache = ImageCache()
+        trainloader, testloader, testpathloader = load_split_train_test(DATA_PATH, args, rank, seed=SEED, k=K, test_fold=test_fold, loader=ImageCache().load_image)
 
         ## get paths...
         Collate.disable()
