@@ -107,28 +107,6 @@ class Collate(object):
     def eval():
         Collate.training = False
     
-    ## used for TEST SET...
-    @staticmethod
-    def simple_collate(batch):
-        # data = [torch.FloatTensor(np.array(item[0]).transpose([2,0,1]) * (1/255)) for item in batch]
-        data = [item[0] for item in batch]
-        labels = torch.LongTensor([item[1] for item in batch])
-        paths = [item[2] for item in batch]
-        idx = torch.LongTensor([item[3] for item in batch])
-        
-        ## resize...?
-        if Collate.scale is not None:
-            data = [scale_img(img, Collate.scale) for img in data]
-        
-        ## pad test data too...?
-        if Collate.pad>0:
-            d = F.pad(input=data[0], pad=(Collate.pad, Collate.pad, Collate.pad, Collate.pad), mode='constant', value=0)
-            data = [d]
-        
-        data = torch.cat(data, dim=0)
-        if len(data.shape)==3: data = torch.unsqueeze(data, 0)
-        return [data, labels, paths, idx]
-    
     ## used for TRAIN SET...
     @staticmethod
     def my_collate(batch):
@@ -312,7 +290,7 @@ def load_split_train_test(datadir, args, rank, seed, k=5, test_fold=0, loader=No
                                               sampler=train_sampler,
                                               batch_size=args.batch_size,
                                               pin_memory=True,
-                                              collate_fn = Collate.simple_collate if args.batch_size==1 else Collate.my_collate,
+                                              collate_fn=Collate.my_collate,
                                               )
     
     ## test sampler
@@ -323,7 +301,7 @@ def load_split_train_test(datadir, args, rank, seed, k=5, test_fold=0, loader=No
                                              sampler=test_sampler,
                                              batch_size=test_batch_size,
                                              pin_memory=True,
-                                             collate_fn = Collate.simple_collate if test_batch_size==1 else Collate.my_collate,
+                                             collate_fn=Collate.my_collate,
                                              )
 
     test_path_sampler = SubsetRandomSampler(test_idx)
@@ -372,25 +350,21 @@ def train_model(rank, args):
     REMOTE_ROOT = '/home/ubuntu/data/attribs/'
 
     # Epoch 19/30...  [0.96, 0.96, 0.66, 0.94]        AP_micro: 0.953*        FPS:184/188
-    ITEM, scale, fc, drops, print_every, rot, SEED  = 'Insulator_Type', 320, 128, [0.66,0.33], 200, -1, 45245
+    ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Insulator_Type', 480, 18, 64, [0.66,0.33], 200, -1, 45245
     cv_complete = False
-    K, alpha = 3, 0.5
+    K, alpha = 4, 0.5
     args.batch_size = 32
-    args.epochs = 10
-    args.res = 18
+    args.epochs = 20
+    PLOT = True
 
     ###############################
     ## INSULATOR MATERIAL ##
 
-    # Epoch 20/20...  [0.99, 0.87, 1.0]       AP_micro: 0.989*        FPS:248/265
-    ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Insulator_Material', 40000, 18, 64, [0.66,0.66], 320, 0.25, 1111
     ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Insulator_Material', 480, 18, 64, [0.66,0.66], 320, 0.25, 1111
     cv_complete = False
     K, alpha = 5, 0.5
     args.batch_size = 64
     args.epochs = 20
-    # args.res = 34
-    
     PLOT = True
     
     ##################################################################################

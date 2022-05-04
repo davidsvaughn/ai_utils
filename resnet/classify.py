@@ -97,7 +97,7 @@ def scale_img(img, scale, pad=10):
 
 ITEM, SCALE, RES, FC, NUMCLASS = 'Insulator_Type', 320, 18, 128, 4
 
-ITEM, SCALE, RES, FC, NUMCLASS = 'Insulator_Material', 40000, 18, 64, 3
+ITEM, SCALE, RES, FC, NUMCLASS = 'Insulator_Material', 480, 18, 64, 3
 
 
 ROOT  = '/home/david/code/phawk/data/generic/transmission/master/attribs/'
