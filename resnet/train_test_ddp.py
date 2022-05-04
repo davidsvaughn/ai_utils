@@ -25,6 +25,10 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 
+#
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+
 
 # ------ Setting up the distributed environment -------
 def setup(rank, world_size):
@@ -253,29 +257,59 @@ class ImageFolderWithPathsAndIndex(datasets.ImageFolder):
         # tuple_with_path_and_index = (tuple_with_path + (index,))
         tuple_with_path_and_index = (original_tuple + (path,) + (index,))
         return tuple_with_path_and_index
-    
+
+class Transforms:
+    def __init__(self, transforms):
+        # self.transforms = A.Compose([A.Resize(224,224),ToTensorV2()])
+        self.transforms = transforms
+
+    def __call__(self, img, *args, **kwargs):
+        return self.transforms(image=np.array(img))['image']
+
 def load_split_train_test(datadir, args, rank, seed, k=5, test_fold=0, loader=None):
 
-    train_transforms = transforms.Compose([
-                                        transforms.RandomHorizontalFlip(),
-                                        # transforms.RandomRotation(degrees=(90, -90)),
-                                        # transforms.RandomResizedCrop(512, scale=(0.1, 0.5)),
-                                        transforms.ToTensor(),
-                                        # transforms.ColorJitter(*cj),
-                                        # transforms.Normalize(mean=[0.436, 0.45 , 0.413], std=[0.212, 0.208, 0.221]),
-                                        # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-                                       ])
+    # train_transforms = transforms.Compose([
+    #                                     transforms.RandomHorizontalFlip(),
+    #                                     # transforms.RandomRotation(degrees=(90, -90)),
+    #                                     # transforms.RandomResizedCrop(512, scale=(0.1, 0.5)),
+    #                                     transforms.ToTensor(),
+    #                                     # transforms.ColorJitter(*cj),
+    #                                     # transforms.Normalize(mean=[0.436, 0.45 , 0.413], std=[0.212, 0.208, 0.221]),
+    #                                     # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    #                                    ])
+    # test_transforms = transforms.Compose([
+    #                                     transforms.ToTensor(),
+    #                                    # transforms.ColorJitter(*cj),
+    #                                     # transforms.Normalize(mean=[0.436, 0.45 , 0.413], std=[0.212, 0.208, 0.221]),
+    #                                     # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    #                                   ])
 
-    test_transforms = transforms.Compose([
-                                        transforms.ToTensor(),
-                                       # transforms.ColorJitter(*cj),
-                                        # transforms.Normalize(mean=[0.436, 0.45 , 0.413], std=[0.212, 0.208, 0.221]),
-                                        # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-                                      ])
+    # train_data = ImageFolderWithPathsAndIndex(datadir, transform=train_transforms, loader=loader)
+    # test_data = ImageFolderWithPathsAndIndex(datadir, transform=test_transforms, loader=loader)
     
-    train_data = ImageFolderWithPathsAndIndex(datadir, transform=train_transforms, loader=loader)
-    test_data = ImageFolderWithPathsAndIndex(datadir, transform=test_transforms, loader=loader)
-
+    ## albumentations....
+    train_transforms = A.Compose(
+        [
+            A.Flip(p=0.5),
+            A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.05, rotate_limit=15, p=0.5),
+            A.RGBShift(r_shift_limit=15, g_shift_limit=15, b_shift_limit=15, p=0.5),
+            A.RandomBrightnessContrast(p=0.5),
+            # A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            ToTensorV2(),
+        ]
+    )
+    test_transforms = A.Compose(
+        [
+            # A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            ToTensorV2(),
+        ]
+    )
+    train_data = ImageFolderWithPathsAndIndex(datadir, transform=Transforms(train_transforms), loader=loader)
+    test_data = ImageFolderWithPathsAndIndex(datadir, transform=Transforms(test_transforms), loader=loader)
+    
+    
+    
+    
     ## train/test split
     num_train = len(train_data)
     idx = np.random.RandomState(seed=seed).permutation(num_train)
@@ -482,7 +516,7 @@ def train_model(rank, args):
                 inputs, labels = inputs.to(rank), labels.to(rank)
                 
                 optimizer.zero_grad()
-                logps = model.forward(inputs)
+                logps = model.forward(inputs.float())
                 loss = criterion(logps, labels)
                 loss.backward()
                 optimizer.step()
@@ -504,7 +538,7 @@ def train_model(rank, args):
 
                         for inputs, labels, _, idx in testloader:
                             inputs, labels, idx = inputs.to(rank), labels.to(rank), idx.to(rank)
-                            logps = model.forward(inputs)
+                            logps = model.forward(inputs.float())
                             ps = torch.exp(logps)
 
                             ## gather outputs from all DDP processes...
