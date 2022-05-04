@@ -6,6 +6,7 @@ import math
 from pathlib import Path
 from PIL import Image
 import numpy as np
+from matplotlib import pyplot as plt
 import copy
 from sklearn.metrics import average_precision_score, precision_recall_curve
 import torch
@@ -149,7 +150,7 @@ class Collate(object):
             data = [random_rot90(img, Collate.rot) for img in data]
 
         ## orient all same....
-        if Collate.training:
+        if Collate.training and Collate.rot>-1:
             szs = np.array([d.shape[1:] for d in data])
             q = (szs[:,0]>szs[:,1]).mean()
             v = 1 if np.random.rand()<q else -1
@@ -342,13 +343,17 @@ def gather_tensors(t, device, world_size):
     return torch.cat(out_t, 0)
 
 def train_model(rank, args):
+    global y,Y_test
+    #######################
     ddp = args.world_size>1
     if ddp:
         print(f"Running Distributed ResNet on rank {rank}.")
         setup(rank, args.world_size)
     torch.cuda.set_device(rank)
+    PLOT = False
 
     ##################################################################################
+    ## WOOD DAMAGE ##
 
     LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/tags/'
     REMOTE_ROOT = '/home/ubuntu/data/wood_damage/tags/'
@@ -360,29 +365,33 @@ def train_model(rank, args):
     args.epochs = 32
     args.res = 50
 
-    #########################################
-
+    ######################################################
+    ## INSULATOR TYPE ##
 
     LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/master/attribs/'
     REMOTE_ROOT = '/home/ubuntu/data/attribs/'
 
     # Epoch 19/30...  [0.96, 0.96, 0.66, 0.94]        AP_micro: 0.953*        FPS:184/188
-    ITEM, scale, fc, drops, print_every, rot, SEED  = 'Insulator_Type', 320, 256, [0.66,0.33], 200, 0.25, 191919
+    ITEM, scale, fc, drops, print_every, rot, SEED  = 'Insulator_Type', 320, 128, [0.66,0.33], 200, -1, 45245
     cv_complete = False
-    K, alpha = 5, 0.5
+    K, alpha = 3, 0.5
     args.batch_size = 32
-    args.epochs = 30
+    args.epochs = 10
     args.res = 18
 
-    #########
+    ###############################
+    ## INSULATOR MATERIAL ##
 
     # Epoch 20/20...  [0.99, 0.87, 1.0]       AP_micro: 0.989*        FPS:248/265
-    # ITEM, scale, fc, drops, print_every, rot, SEED  = 'Insulator_Material', 480, 256, [0.66,0.33], 200, 0.25, 191919
-    # cv_complete = False
-    # K, alpha = 5, 0.5
-    # args.batch_size = 32
-    # args.epochs = 20
-    # args.res = 18
+    ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Insulator_Material', 40000, 18, 64, [0.66,0.66], 320, 0.25, 1111
+    ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Insulator_Material', 480, 18, 64, [0.66,0.66], 320, 0.25, 1111
+    cv_complete = False
+    K, alpha = 5, 0.5
+    args.batch_size = 64
+    args.epochs = 20
+    # args.res = 34
+    
+    PLOT = True
     
     ##################################################################################
     home = str(Path.home())
@@ -480,7 +489,7 @@ def train_model(rank, args):
         # Training
         device = next(model.parameters()).device
         running_loss = 0
-        best_f1, best_ap = 0, 0
+        best_f1, best_ap, best_acc = 0, 0, 0
         train_losses, test_losses = [], []
         pe = print_every
         
@@ -492,8 +501,7 @@ def train_model(rank, args):
             trainloader.sampler.set_epoch(epoch)
             
             ## test metrics more frequently in later epochs....
-            if epoch/args.epochs==0.5 :
-                pe /= 2
+            # if epoch/args.epochs==0.5: pe /= 2
                 
             for inputs, labels, _,_ in trainloader:
                 frames += args.batch_size * args.world_size
@@ -556,40 +564,58 @@ def train_model(rank, args):
                         ## https://stats.stackexchange.com/questions/534431/calculating-area-under-the-precision-recall-curve-with-multiclass
 
                         if num_class>2:
-                            precision = dict()
-                            recall = dict()
-                            average_precision = dict()
+                            precision, recall = dict(), dict()
                             aps = []
-                            for i in range(num_class):
-                                ti, yi = (t==i)+0, y[:,i]
-                                precision[i], recall[i], _ = precision_recall_curve(ti, yi)
-                                average_precision[i] = average_precision_score(ti, yi)
-                                aps.append(average_precision[i])
-
-                            # A "micro-average": quantifying score on all classes jointly
                             Y_test = (t[:,None]==np.arange(num_class)[None,:])*1
-                            precision["micro"], recall["micro"], _ = precision_recall_curve(Y_test.ravel(), y.ravel())
-                            average_precision["micro"] = average_precision_score(Y_test, y, average="micro")
-                            # print('Average precision score, micro-averaged over all classes: {0:0.2f}'.format(average_precision["micro"]))
-
-                            ap = average_precision["micro"]
+                            # Y_pred = (y.argmax(1)[:,None]==np.arange(num_class)[None,:])*1
+                            # # Y_pred = (abs(y-y.max(1)[:,None])<0.00001).astype(np.int32)
+                            
+                            for i in range(num_class):
+                                yi, ti = y[:,i], Y_test[:,i] # (t==i)+0
+                                precision[i], recall[i], _ = precision_recall_curve(ti, yi)
+                                aps.append(average_precision_score(ti, yi))
+                                
+                            # A "micro-average": quantifying score on all classes jointly
+                            pp,rr,_ = precision_recall_curve(Y_test.ravel(), y.ravel())
+                            ap = average_precision_score(Y_test, y, average="micro")
                             aps = np.array(aps).round(2).tolist()
+                            
+                            ## global accuracy
+                            acc = (Y_test.argmax(1) == y.argmax(1)).mean()
+                            
+                            ## chance adjusted accuracy
+                            e = 10
+                            acc_e = np.mean([(Y_test.argmax(1) == np.random.randint(0,3,len(y))).mean() for _ in range(e)])
+                            acc_k = (acc-acc_e)/(1-acc_e)
 
                             xxx = ' \t'
                             if ap > best_ap:
                                 best_ap = ap
                                 xxx = '*\t'
+                                # update_model = True
+                            eee = ' \t'
+                            if acc_k > best_acc:
+                                best_acc = acc_k
+                                eee = '*\t'
                                 update_model = True
+                                
                             if update_model:
                                 best_model = copy.deepcopy(model)
                                 if SAVE:
                                     torch.save(best_model.state_dict(), MODEL_CHKPT)
+                                if PLOT:
+                                    plt.plot(rr,pp,'g')
+                                    plt.title('PR Curve')
+                                    plt.show()
                                 ## FPs/FNs...
-                                T,Y,S,CC = t,y,p,0
+                                T,Y,S,CC = Y_test,y,p,0
+                                ##
+                                # if epoch>7: sys.exit()
+                                
                             print(f"Epoch {epoch+1}/{args.epochs}...\t"
-                                f"{aps}\t"
-                                f"AP_micro: {ap:.3f}{xxx}"
-                                f"FPS:{fps_train}/{fps_test}"
+                                  f"ACC: {acc_k:.3f}{eee}"
+                                  f"AP: {aps}\t{ap:.3f}{xxx}"
+                                  f"FPS:{fps_train}/{fps_test}"
                                 )
 
                         ##########################################
@@ -651,11 +677,16 @@ def train_model(rank, args):
         ## END TRAIN LOOP...
         ###########################################################
         if rank<1:
-            Ts.extend(T)
-            Ys.extend(Y)
             Ss.extend(S)
+            if num_class>2:
+                Ts.append(T)
+                Ys.append(Y)
+            else:
+                Ts.extend(T)
+                Ys.extend(Y)
             if SAVE:
                 torch.save(best_model.state_dict(), MODEL_FILE)
+                print(f'Best Model saved to:\n\t{MODEL_FILE}')
         
         ## break CV loop ?
         if not cv_complete: break
@@ -665,30 +696,53 @@ def train_model(rank, args):
     ###########################################################
     
     if rank<1:
-        Ts,Ys,Ss = np.array(Ts), np.array(Ys), np.array(Ss)
-        idx = np.argsort(Ys)
-        Ts,Ys,Ss = Ts[idx],Ys[idx],Ss[idx]
-        
-        ap = average_precision_score(Ts, Ys)
-        pp,rr,tt = precision_recall_curve(Ts, Ys)
-        f1 = 2*pp*rr/(pp+rr+1e-16)
-        f1max = f1.max()
-        pm,rm = pp[f1.argmax()],rr[f1.argmax()]
-        CC = tt[f1.argmax()]
-        
-        cuta = 0.5
-        ia = abs(tt-cuta).argmin()
-        f1a,pa,ra = f1[ia],pp[ia],rr[ia]
-        cutb = (CC+0.5)/2
-        ib = abs(tt-cutb).argmin()
-        f1b,pb,rb = f1[ib],pp[ib],rr[ib]
-        
-        print(f"\nFINAL K-fold metrics:\n"
-              f"\tAP: {ap:.3f}\n"
-              f"\tF1: {f1a:.3f} ({pa:.3f}/{ra:.3})\tcut={cuta:0.3g}\n"
-              f"\tF1: {f1b:.3f} ({pb:.3f}/{rb:.3})\tcut={cutb:0.3g}\n"
-              f"\tF1: {f1max:.3f} ({pm:.3f}/{rm:.3})\tcut={CC:0.3g}\n"
-              )
+        if num_class>2:
+            Ts, Ys = np.vstack(Ts), np.vstack(Ys)
+            Ss = np.array(Ss)
+            precision, recall = dict(), dict()
+            aps = []
+            for i in range(num_class):
+                yi, ti = Ys[:,i], Ts[:,i] # (t==i)+0
+                precision[i], recall[i], _ = precision_recall_curve(ti, yi)
+                aps.append(average_precision_score(ti, yi))
+            # A "micro-average": quantifying score on all classes jointly
+            pp,rr,_ = precision_recall_curve(Ts.ravel(), Ys.ravel())
+            ap = average_precision_score(Ts, Ys, average="micro")
+            aps = np.array(aps).round(2).tolist()
+
+            print(f"\nK-FOLD METRICS:\n"
+                f"AP: {aps}\t{ap:.3f}"
+                )
+            if PLOT:
+                plt.plot(rr,pp,'g')
+                plt.title('K-FOLD PR Curve')
+                plt.show()
+
+        else:
+            Ts,Ys,Ss = np.array(Ts), np.array(Ys), np.array(Ss)
+            idx = np.argsort(Ys)
+            Ts,Ys,Ss = Ts[idx],Ys[idx],Ss[idx]
+            
+            ap = average_precision_score(Ts, Ys)
+            pp,rr,tt = precision_recall_curve(Ts, Ys)
+            f1 = 2*pp*rr/(pp+rr+1e-16)
+            f1max = f1.max()
+            pm,rm = pp[f1.argmax()],rr[f1.argmax()]
+            CC = tt[f1.argmax()]
+            
+            cuta = 0.5
+            ia = abs(tt-cuta).argmin()
+            f1a,pa,ra = f1[ia],pp[ia],rr[ia]
+            cutb = (CC+0.5)/2
+            ib = abs(tt-cutb).argmin()
+            f1b,pb,rb = f1[ib],pp[ib],rr[ib]
+            
+            print(f"\nFINAL K-fold metrics:\n"
+                f"\tAP: {ap:.3f}\n"
+                f"\tF1: {f1a:.3f} ({pa:.3f}/{ra:.3})\tcut={cuta:0.3g}\n"
+                f"\tF1: {f1b:.3f} ({pb:.3f}/{rb:.3})\tcut={cutb:0.3g}\n"
+                f"\tF1: {f1max:.3f} ({pm:.3f}/{rm:.3})\tcut={CC:0.3g}\n"
+                )
     if ddp:
         cleanup()
 
