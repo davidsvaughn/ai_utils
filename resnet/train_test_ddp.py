@@ -87,6 +87,27 @@ def random_rot90(x, p):
         x = torch.rot90(x, k, [1,2])
     return x
 
+class ImageCache(object):
+    def __init__(self, scale=None):
+        self.scale = scale
+        self.data = {}
+    
+    def image_loader(self, path):
+        with open(path, "rb") as f:
+            img = np.array(Image.open(f).convert("RGB"))
+            # img = cv2.cvtColor(cv2.imread(f), cv2.COLOR_BGR2RGB)
+            ####
+            if self.scale is not None:
+                img = torch.FloatTensor(img.transpose([2,0,1]))
+                img = scale_img(img, self.scale).numpy().transpose([1,2,0]).astype(np.uint8) ## dsv******
+            ####
+            return img
+
+    def load_image(self, path):
+        if path not in self.data:
+            self.data[path] = self.image_loader(path)
+        return self.data[path]
+
 class Collate(object):
     pad = 10
     rot = 0
@@ -124,12 +145,12 @@ class Collate(object):
             return [None, None, paths, idx]
         
         ## resize...?
-        if Collate.scale is not None:
-            data = [scale_img(img, Collate.scale, rand=Collate.rand_scale if Collate.training else None) for img in data]
+        # if Collate.scale is not None:
+        #     data = [scale_img(img, Collate.scale, rand=Collate.rand_scale if Collate.training else None) for img in data]
          
-        ## randomly rotate +-90 deg...?
-        if Collate.training and Collate.rot>0:
-            data = [random_rot90(img, Collate.rot) for img in data]
+        # ## randomly rotate +-90 deg...?
+        # if Collate.training and Collate.rot>0:
+        #     data = [random_rot90(img, Collate.rot) for img in data]
 
         ## orient all same....
         if Collate.training and Collate.rot>-1:
@@ -228,24 +249,6 @@ class DistributedSubsetRandomSampler(Sampler[int]):
             epoch (int): _epoch number.
         """
         self.epoch = epoch
-
-class ImageCache(object):
-    def __init__(self):
-        self.data = {}
-    
-    def pil_loader(self, path):
-        with open(path, "rb") as f:
-            img = Image.open(f)
-            return img.convert("RGB")
-
-    def load_image(self, path):
-        if path not in self.data:
-            self.data[path] = self.pil_loader(path)
-        return self.data[path]
-    
-    
-    # image = cv2.imread(image_filepath)
-    # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
       
 class ImageFolderWithPathsAndIndex(datasets.ImageFolder):
     """Custom dataset that includes image file paths. Extends torchvision.datasets.ImageFolder
@@ -294,7 +297,8 @@ def load_split_train_test(datadir, args, rank, seed, k=5, test_fold=0, loader=No
     train_transforms = A.Compose(
         [
             A.Flip(p=0.5),
-            A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.05, rotate_limit=15, p=0.5),
+            A.RandomRotate90(p=0.25),
+            A.ShiftScaleRotate(shift_limit=0.1, scale_limit=[0.5,1], rotate_limit=15, p=0.5),
             A.RGBShift(r_shift_limit=15, g_shift_limit=15, b_shift_limit=15, p=0.5),
             A.RandomBrightnessContrast(p=0.5),
             # A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
@@ -371,15 +375,15 @@ def train_model(rank, args):
     ##################################################################################
     ## WOOD DAMAGE ##
 
-    LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/tags/'
-    REMOTE_ROOT = '/home/ubuntu/data/wood_damage/tags/'
+    # LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/tags/'
+    # REMOTE_ROOT = '/home/ubuntu/data/wood_damage/tags/'
     
-    ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Deteriorated', 1024, 50, 256, [0.66,0.33], 300, 0.25, 453245
-    cv_complete = True
-    K, alpha = 5, 0.25
-    args.batch_size = 32
-    args.epochs = 32
-    PLOT = True
+    # ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Deteriorated', 1024, 50, 256, [0.66,0.33], 300, 0.25, 453245
+    # cv_complete = True
+    # K, alpha = 5, 0.25
+    # args.batch_size = 32
+    # args.epochs = 32
+    # PLOT = True
     
     
     # ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Vegetation', 1024, 34, 64, [0.66,0.33], 200, 0.25, 191919
@@ -392,15 +396,15 @@ def train_model(rank, args):
     ##################################################################################
     ## INSULATOR TYPE ##
 
-    # LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/master/attribs/'
-    # REMOTE_ROOT = '/home/ubuntu/data/attribs/'
+    LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/master/attribs/'
+    REMOTE_ROOT = '/home/ubuntu/data/attribs/'
 
-    # ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Insulator_Type', 480, 18, 64, [0.66,0.33], 300, 0.25, 45245
-    # cv_complete = False
-    # K, alpha = 5, 0.5
-    # args.batch_size = 32
-    # args.epochs = 20
-    # PLOT = True
+    ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Insulator_Type', 480, 18, 64, [0.66,0.33], 300, 0.25, 45245
+    cv_complete = False
+    K, alpha = 5, 0.5
+    args.batch_size = 32
+    args.epochs = 20
+    PLOT = True
 
     ###############################
     ## INSULATOR MATERIAL ##
@@ -495,7 +499,8 @@ def train_model(rank, args):
         lr_sched = lr_scheduler.ExponentialLR(optimizer, gamma=gamma) # 0.98
         
         # image_cache = ImageCache()
-        trainloader, testloader, testpathloader = load_split_train_test(DATA_PATH, args, rank, seed=SEED, k=K, test_fold=test_fold, loader=ImageCache().load_image)
+        image_cache = ImageCache(scale=scale)
+        trainloader, testloader, testpathloader = load_split_train_test(DATA_PATH, args, rank, seed=SEED, k=K, test_fold=test_fold, loader=image_cache.load_image)
 
         ## get paths...
         Collate.disable()
