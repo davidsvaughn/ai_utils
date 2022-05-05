@@ -337,7 +337,7 @@ def load_split_train_test(datadir, args, rank, seed, k=5, test_fold=0, loader=No
     
     ## test sampler
     # test_batch_size = 1
-    test_batch_size = args.batch_size # // 2
+    test_batch_size = args.batch_size // 2
     test_sampler = DistributedSubsetRandomSampler(test_idx, num_replicas=args.world_size, rank=rank)
     testloader = torch.utils.data.DataLoader(test_data, 
                                              sampler=test_sampler,
@@ -363,27 +363,26 @@ def gather_tensors(t, device, world_size):
     return torch.cat(out_t, 0)
 
 def train_model(rank, args):
-    global y,Y_test
+    # global y,Y_test
     #######################
     ddp = args.world_size>1
     if ddp:
         print(f"Running Distributed ResNet on rank {rank}.")
         setup(rank, args.world_size)
     torch.cuda.set_device(rank)
-    PLOT = False
+    PLOT = True
 
     ##################################################################################
     ## WOOD DAMAGE ##
 
-    # LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/tags/'
-    # REMOTE_ROOT = '/home/ubuntu/data/wood_damage/tags/'
+    LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/tags/'
+    REMOTE_ROOT = '/home/ubuntu/data/wood_damage/tags/'
     
-    # ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Deteriorated', 1024, 50, 256, [0.66,0.33], 300, 0.25, 453245
-    # cv_complete = True
-    # K, alpha = 5, 0.25
-    # args.batch_size = 32
-    # args.epochs = 32
-    # PLOT = True
+    ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Deteriorated', 1024, 50, 256, [0.66,0.33], 300, 0, 657657
+    cv_complete = True
+    K, alpha = 5, 0.5
+    args.batch_size = 32
+    args.epochs = 32
     
     
     # ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Vegetation', 1024, 34, 64, [0.66,0.33], 200, 0.25, 191919
@@ -391,20 +390,18 @@ def train_model(rank, args):
     # K, alpha = 5, 0.25
     # args.batch_size = 32
     # args.epochs = 32
-    # PLOT = True
 
     ##################################################################################
     ## INSULATOR TYPE ##
 
-    LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/master/attribs/'
-    REMOTE_ROOT = '/home/ubuntu/data/attribs/'
+    # LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/master/attribs/'
+    # REMOTE_ROOT = '/home/ubuntu/data/attribs/'
 
-    ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Insulator_Type', 480, 18, 64, [0.66,0.33], 300, 0.25, 45245
-    cv_complete = False
-    K, alpha = 5, 0.5
-    args.batch_size = 32
-    args.epochs = 20
-    PLOT = True
+    # ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Insulator_Type', 480, 18, 64, [0.66,0.33], 300, 0.25, 45245
+    # cv_complete = False
+    # K, alpha = 5, 0.5
+    # args.batch_size = 32
+    # args.epochs = 20
 
     ###############################
     ## INSULATOR MATERIAL ##
@@ -414,17 +411,17 @@ def train_model(rank, args):
     # K, alpha = 5, 0.5
     # args.batch_size = 32
     # args.epochs = 20
-    # PLOT = True
     
     
     ##################################################################################
+    SAVE = True
     home = str(Path.home())
     ROOT = LOCAL_ROOT if home in LOCAL_ROOT else REMOTE_ROOT
+    PLOT = PLOT if home in LOCAL_ROOT else False
     DATA_PATH = os.path.join(ROOT, ITEM)
     MODEL_PATH = os.path.join(ROOT, 'models', ITEM)
     MODEL_FILE = os.path.join(MODEL_PATH, f'{ITEM}.pt')
     MODEL_CHKPT = os.path.join(MODEL_PATH, f'{ITEM}_chk.pt')
-    SAVE = True
     if rank<1:
         make_dirs(MODEL_PATH)
 
