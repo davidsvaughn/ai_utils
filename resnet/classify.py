@@ -18,6 +18,7 @@ from sklearn.metrics import average_precision_score
 import copy
 from shutil import copyfile
 import torch.nn.functional as FF
+from albumentations.pytorch import ToTensorV2
 
 # from FullyConvolutionalResnet18 import FullyConvolutionalResnet18
 
@@ -95,9 +96,12 @@ def scale_img(img, scale, pad=10):
 
 ####################
 
-ITEM, SCALE, RES, FC, NUMCLASS = 'Insulator_Type', 320, 18, 128, 4
+ITEM, SCALE, RES, FC, NUMCLASS = 'Insulator_Type', 480, 18, 64, 3
 
-ITEM, SCALE, RES, FC, NUMCLASS = 'Insulator_Material', 480, 18, 64, 3
+ALBUM = False
+ALBUM = True
+
+# ITEM, SCALE, RES, FC, NUMCLASS = 'Insulator_Material', 480, 18, 64, 3
 
 
 ROOT  = '/home/david/code/phawk/data/generic/transmission/master/attribs/'
@@ -107,7 +111,8 @@ MODEL_FILE = os.path.join(MODEL_PATH, f'{ITEM}_chk.pt')
 SAVE_PATH = os.path.join(ROOT, 'add', ITEM)
 mkdirs(SAVE_PATH)
 
-DATA_PATH = '/home/david/code/phawk/data/generic/transmission/claire/detect/transmaster3/crops/Insulator/'
+# DATA_PATH = '/home/david/code/phawk/data/generic/transmission/claire/detect/transmaster3/crops/Insulator/'
+DATA_PATH = os.path.join(ROOT, 'test', ITEM)
 
 ## sanity check 
 # DATA_PATH = '/home/david/code/phawk/data/generic/transmission/master/attribs/Insulator_Material/1/'
@@ -147,6 +152,8 @@ model.load_state_dict(torch.load(MODEL_FILE), strict=False)
 model.to(device)
 model.eval()
 
+totensorv2 = ToTensorV2()
+
 BS = 1
 P,S,data,files = [],[],[],[]
 for i,f in enumerate(F):
@@ -156,7 +163,18 @@ for i,f in enumerate(F):
     img = np.array(Image.open(fn))
     
     # img = img[...,::-1].copy() ## BGR => RGB
-    img = torch.FloatTensor(img.transpose([2,0,1]) * (1/255)) ## [h,w,3] => [3,h,w]
+    if not ALBUM:
+        img *= (1/255)
+    img = torch.FloatTensor(img.transpose([2,0,1]))
+    
+    # if ALBUM:
+    #     # img =  totensorv2(image=img)['image']
+    #     img = img.transpose([2,0,1])
+    #     img = torch.FloatTensor(img)
+    # else:
+    #     # img = img[...,::-1].copy() ## BGR => RGB
+    #     img = img.transpose([2,0,1]) * (1/255) ## [h,w,3] => [3,h,w]
+    #     img = torch.FloatTensor(img)
 
     data.append(img)
     files.append(f)
@@ -165,6 +183,7 @@ for i,f in enumerate(F):
         if i%100==0:
             print(f'{i}/{len(F)}')
         data = [scale_img(img, SCALE) for img in data]
+        #######################################
         # szs = np.array([d.shape[1:] for d in data])
         # H,W = szs.max(0)
         # X = []
@@ -175,6 +194,7 @@ for i,f in enumerate(F):
         #     x = FF.pad(input=d, pad=(w1, w2, h1, h2), mode='constant', value=0)
             # X.append(d.unsqueeze(0))
         # data = torch.cat(X, dim=0).to(device)
+        #######################################
         data = [img.to(device) for img in data]
         with torch.no_grad():
             p = torch.softmax(model(data[0].unsqueeze(0)), dim=1).cpu().numpy()
@@ -186,7 +206,7 @@ P = np.vstack(P)
 Y = P.argmax(1)
 
 for y,s in zip(Y,S):
-    dst_path = os.path.join(SAVE_PATH, f'{y}{y}')
+    dst_path = os.path.join(SAVE_PATH, f'{y}')
     mkdirs(dst_path)
     src = os.path.join(DATA_PATH, s)
     dst = os.path.join(dst_path, s)

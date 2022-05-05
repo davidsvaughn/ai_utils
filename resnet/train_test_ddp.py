@@ -242,6 +242,10 @@ class ImageCache(object):
         if path not in self.data:
             self.data[path] = self.pil_loader(path)
         return self.data[path]
+    
+    
+    # image = cv2.imread(image_filepath)
+    # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
       
 class ImageFolderWithPathsAndIndex(datasets.ImageFolder):
     """Custom dataset that includes image file paths. Extends torchvision.datasets.ImageFolder
@@ -260,14 +264,14 @@ class ImageFolderWithPathsAndIndex(datasets.ImageFolder):
 
 class Transforms:
     def __init__(self, transforms):
-        # self.transforms = A.Compose([A.Resize(224,224),ToTensorV2()])
         self.transforms = transforms
 
     def __call__(self, img, *args, **kwargs):
         return self.transforms(image=np.array(img))['image']
 
 def load_split_train_test(datadir, args, rank, seed, k=5, test_fold=0, loader=None):
-
+    ###############################################################################
+    ## original transforms
     # train_transforms = transforms.Compose([
     #                                     transforms.RandomHorizontalFlip(),
     #                                     # transforms.RandomRotation(degrees=(90, -90)),
@@ -276,17 +280,16 @@ def load_split_train_test(datadir, args, rank, seed, k=5, test_fold=0, loader=No
     #                                     # transforms.ColorJitter(*cj),
     #                                     # transforms.Normalize(mean=[0.436, 0.45 , 0.413], std=[0.212, 0.208, 0.221]),
     #                                     # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    #                                    ])
+    #                                     ])
     # test_transforms = transforms.Compose([
     #                                     transforms.ToTensor(),
-    #                                    # transforms.ColorJitter(*cj),
+    #                                     # transforms.ColorJitter(*cj),
     #                                     # transforms.Normalize(mean=[0.436, 0.45 , 0.413], std=[0.212, 0.208, 0.221]),
     #                                     # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     #                                   ])
-
-    # train_data = ImageFolderWithPathsAndIndex(datadir, transform=train_transforms, loader=loader)
-    # test_data = ImageFolderWithPathsAndIndex(datadir, transform=test_transforms, loader=loader)
     
+    
+    ###############################################################################
     ## albumentations....
     train_transforms = A.Compose(
         [
@@ -304,11 +307,13 @@ def load_split_train_test(datadir, args, rank, seed, k=5, test_fold=0, loader=No
             ToTensorV2(),
         ]
     )
-    train_data = ImageFolderWithPathsAndIndex(datadir, transform=Transforms(train_transforms), loader=loader)
-    test_data = ImageFolderWithPathsAndIndex(datadir, transform=Transforms(test_transforms), loader=loader)
+    train_transforms = Transforms(train_transforms)
+    test_transforms = Transforms(test_transforms)
     
+    ###############################################################################
     
-    
+    train_data = ImageFolderWithPathsAndIndex(datadir, transform=train_transforms, loader=loader)
+    test_data = ImageFolderWithPathsAndIndex(datadir, transform=test_transforms, loader=loader)
     
     ## train/test split
     num_train = len(train_data)
@@ -318,7 +323,6 @@ def load_split_train_test(datadir, args, rank, seed, k=5, test_fold=0, loader=No
     train_idx = np.setdiff1d(idx, test_idx)
 
     ## train sampler
-    # train_sampler = DistributedSubsetRandomSampler(train_idx, num_replicas=4, rank=rank)
     train_sampler = DistributedSubsetRandomSampler(train_idx, num_replicas=args.world_size, rank=rank)
     trainloader = torch.utils.data.DataLoader(train_data, 
                                               sampler=train_sampler,
@@ -328,8 +332,8 @@ def load_split_train_test(datadir, args, rank, seed, k=5, test_fold=0, loader=No
                                               )
     
     ## test sampler
-    test_batch_size = 1
-    test_batch_size = args.batch_size//2
+    # test_batch_size = 1
+    test_batch_size = args.batch_size # // 2
     test_sampler = DistributedSubsetRandomSampler(test_idx, num_replicas=args.world_size, rank=rank)
     testloader = torch.utils.data.DataLoader(test_data, 
                                              sampler=test_sampler,
@@ -369,37 +373,45 @@ def train_model(rank, args):
 
     LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/tags/'
     REMOTE_ROOT = '/home/ubuntu/data/wood_damage/tags/'
-    ITEM, scale, fc, drops, print_every, rot, SEED  = 'Deteriorated', 1024, 256, [0.66,0.33], 300, 0.25, 191919
-
+    
+    ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Deteriorated', 1024, 50, 256, [0.66,0.33], 300, 0.25, 453245
     cv_complete = True
     K, alpha = 5, 0.25
     args.batch_size = 32
     args.epochs = 32
-    args.res = 50
+    PLOT = True
+    
+    
+    # ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Vegetation', 1024, 34, 64, [0.66,0.33], 200, 0.25, 191919
+    # cv_complete = True
+    # K, alpha = 5, 0.25
+    # args.batch_size = 32
+    # args.epochs = 32
+    # PLOT = True
 
-    ######################################################
+    ##################################################################################
     ## INSULATOR TYPE ##
 
-    LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/master/attribs/'
-    REMOTE_ROOT = '/home/ubuntu/data/attribs/'
+    # LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/master/attribs/'
+    # REMOTE_ROOT = '/home/ubuntu/data/attribs/'
 
-    # Epoch 19/30...  [0.96, 0.96, 0.66, 0.94]        AP_micro: 0.953*        FPS:184/188
-    ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Insulator_Type', 480, 18, 64, [0.66,0.33], 200, -1, 45245
-    cv_complete = False
-    K, alpha = 4, 0.5
-    args.batch_size = 32
-    args.epochs = 20
-    PLOT = True
+    # ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Insulator_Type', 480, 18, 64, [0.66,0.33], 300, 0.25, 45245
+    # cv_complete = False
+    # K, alpha = 5, 0.5
+    # args.batch_size = 32
+    # args.epochs = 20
+    # PLOT = True
 
     ###############################
     ## INSULATOR MATERIAL ##
 
-    ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Insulator_Material', 480, 18, 64, [0.66,0.66], 320, 0.25, 1111
-    cv_complete = False
-    K, alpha = 5, 0.5
-    args.batch_size = 64
-    args.epochs = 20
-    PLOT = True
+    # ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Insulator_Material', 480, 18, 64, [0.66,0.66], 320, 0.25, 1111
+    # cv_complete = False
+    # K, alpha = 5, 0.5
+    # args.batch_size = 32
+    # args.epochs = 20
+    # PLOT = True
+    
     
     ##################################################################################
     home = str(Path.home())
@@ -422,6 +434,8 @@ def train_model(rank, args):
         print(f'SEED={SEED}')
     
     for test_fold in range(K):
+        
+        MODEL_CHKPT = os.path.join(MODEL_PATH, f'{ITEM}_{test_fold+1}.pt')
 
         set_random_seeds(random_seed=SEED)
 
@@ -536,7 +550,7 @@ def train_model(rank, args):
 
                     with torch.no_grad():
 
-                        for inputs, labels, _, idx in testloader:
+                        for inputs, labels, paths, idx in testloader:
                             inputs, labels, idx = inputs.to(rank), labels.to(rank), idx.to(rank)
                             logps = model.forward(inputs.float())
                             ps = torch.exp(logps)
@@ -587,6 +601,7 @@ def train_model(rank, args):
                             pp,rr,_ = precision_recall_curve(Y_test.ravel(), y.ravel())
                             ap = average_precision_score(Y_test, y, average="micro")
                             aps = np.array(aps).round(2).tolist()
+                            ap = np.min(aps)
                             
                             ## global accuracy
                             acc = (Y_test.argmax(1) == y.argmax(1)).mean()
@@ -654,6 +669,10 @@ def train_model(rank, args):
                                 best_model = copy.deepcopy(model)
                                 if SAVE:
                                     torch.save(best_model.state_dict(), MODEL_CHKPT)
+                                if PLOT:
+                                    plt.plot(rr,pp,'g')
+                                    plt.title('PR Curve')
+                                    plt.show()
                                 ## FPs/FNs...
                                 T,Y,S,CC = t,y,p,cc
                             train_losses.append(running_loss/len(trainloader))
@@ -717,6 +736,7 @@ def train_model(rank, args):
             pp,rr,_ = precision_recall_curve(Ts.ravel(), Ys.ravel())
             ap = average_precision_score(Ts, Ys, average="micro")
             aps = np.array(aps).round(2).tolist()
+            ap = np.min(aps)
 
             print(f"\nK-FOLD METRICS:\n"
                 f"AP: {aps}\t{ap:.3f}"
