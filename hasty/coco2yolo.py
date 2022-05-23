@@ -1,20 +1,21 @@
-import os, sys
+import os
 import json
-import cv2
-import pandas as pd
-from PIL import Image
-# from utils import *
-
 import glob
 import re
-import os
-import shutil
 from pathlib import Path
 import numpy as np
-from PIL import ExifTags
 from tqdm import tqdm
+import ntpath
 
-## convert labels exported from hasty (in COCO format, not hasty) to yolo format
+# import cv2
+# import pandas as pd
+# from PIL import Image
+# from utils import *
+
+## Script to convert labels exported from hasty (in COCO format, *NOT* hasty format) to YOLO format...
+## -- this is done before we can build training manifest file for AWS
+
+txt,jpg,JPG = '.txt','.jpg','.JPG'
 
 def mkdirs(path):
     if not os.path.exists(path):
@@ -24,7 +25,18 @@ def write_lines(fn, lines):
     with open(fn, 'w') as f:
         for line in lines:
             f.write(f'{line}\n')
-            
+
+def path_leaf(path):
+    head, tail = ntpath.split(path)
+    return tail or ntpath.basename(head)
+
+def get_filenames(path, ext=jpg, noext=False):
+    pattern = os.path.join(path, f'*{ext}')
+    x = np.array([path_leaf(f) for f in glob.glob(pattern)])
+    if noext:
+        x = np.array([f.replace(ext,'') for f in x])
+    return x
+
 def increment_path(path, exist_ok=False, sep='_', mkdir=False):
     # Increment file or directory path, i.e. runs/exp --> runs/exp{sep}2, runs/exp{sep}3, ... etc.
     path = Path(path)  # os-agnostic
@@ -40,14 +52,29 @@ def increment_path(path, exist_ok=False, sep='_', mkdir=False):
     if not dir.exists() and mkdir:
         dir.mkdir(parents=True, exist_ok=True)  # make directory
     return path
-    
-def convert_hasty2yolo(json_file, save_dir):
-    # global lab_path
 
-    img_path = f"{Path(save_dir) / 'images'}" + '/'
+def make_empty_file(fn):
+    with open(fn, 'w') as f:
+        f.write('')
+        
+def make_empty_labels(img_path, lab_path):
+    img_files = get_filenames(img_path, jpg, True)
+    lab_files = get_filenames(lab_path, txt, True)
+    idx = ~np.in1d(img_files, lab_files)
+    files = img_files[idx]
+    for fn in files:
+        make_empty_file(os.path.join(lab_path, f'{fn}{txt}'))
+    
+def convert_hasty2yolo(json_file, save_dir=None, img_path=None, empty=False):
+    if save_dir is None:
+        save_dir = ntpath.split(json_file)[0]
+    
     lab_path = Path(save_dir) / 'labels'
     lab_path = increment_path(lab_path)
     mkdirs(f'{lab_path}')
+    
+    if img_path is None:
+        img_path = Path(save_dir) / 'images'
     
     # Import json
     with open(json_file) as f:
@@ -69,7 +96,7 @@ def convert_hasty2yolo(json_file, save_dir):
         img = images['%g' % x['image_id']]
         h, w, f = img['height'], img['width'], img['file_name']
         
-        print(f)
+        # print(f)
 
         # The COCO box format is [top left x, top left y, width, height]
         box = np.array(x['bbox'], dtype=np.float64)
@@ -83,20 +110,25 @@ def convert_hasty2yolo(json_file, save_dir):
             line = cls, *(box)  # cls, box or segments
             with open((lab_path / f).with_suffix('.txt'), 'a') as file:
                 file.write(('%g ' * len(line)).rstrip() % line + '\n')
+                
+    if empty:
+        make_empty_labels(img_path, lab_path)
 
 
 if __name__ == '__main__':
+
+    # hasty_json_file = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/hasty/wood_dam_ex3.json'
+    # output_dir = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage'
+    # convert_hasty2yolo(hasty_json_file, output_dir)
     
-    # hasty_json_file = '/home/david/code/phawk/data/fpl/damage/rgb/resnet/aitower/labelsT/all_1/hasty_import_export/drc_export_4.json'
-    # output_dir = '/home/david/code/phawk/data/fpl/damage/rgb/resnet/aitower/labelsT/all_1'
+    ##
+    import argparse    
+    parser = argparse.ArgumentParser(description='Convert hasty labels (COCO format) to YOLO labels')
+    parser.add_argument('--input', help='json label file from hasty (COCO format)', type=str)
+    parser.add_argument('--output', help='output directory', type=str)
+    parser.add_argument('--images', help='images directory', type=str)
+    parser.add_argument('--empty', help='make empty label files', action='store_true')
+    args = parser.parse_args()
     
-    # hasty_json_file = '/home/david/code/phawk/data/generic/transmission/damage/insulator_damage/hasty/d1.json'
-    # output_dir = '/home/david/code/phawk/data/generic/transmission/damage/insulator_damage'
-    
-    hasty_json_file = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/hasty/wood_dam_ex3.json'
-    output_dir = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage'
-    
-    ##########################
-    
-    convert_hasty2yolo(hasty_json_file, output_dir)
+    convert_hasty2yolo(args.input, save_dir=args.output, img_path=args.images, empty=args.empty)
     

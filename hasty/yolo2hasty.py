@@ -10,22 +10,31 @@ from glob import glob
 
 # location of YOLO annotation info.... set these values appropriately....
 
-data_root = '/home/david/code/phawk/data/generic/transmission/nisource/detect/claire/'
+data_root = '/home/david/code/phawk/data/solar/thermal/damage/'
 yolo_classes_file = data_root + 'classes.txt'
 directory_labels  = data_root + 'labels'
+directory_images  = data_root + 'images'
+project_name = 'Solar Thermal Damage'       ## name of hasty.ai project being imported into...
+output_file = 'std_import_1.json'    ## json output file name
+
+
+# data_root = '/home/david/code/phawk/data/generic/transmission/thermal/'
+# yolo_classes_file = data_root + 'classes.txt'
+# # directory_labels  = data_root + 'labels'
+# directory_labels  = '/home/david/code/phawk/data/generic/transmission/thermal/detect/pseudo2/labels'
 # directory_images  = data_root + 'images'
-directory_images  = '/home/david/code/phawk/data/generic/transmission/nisource/images'
+# # directory_images  = '/home/david/code/phawk/data/generic/transmission/nisource/images'
+# project_name = 'Transmission Thermal'       ## name of hasty.ai project being imported into...
+# output_file = 'trans_therm_import_2.json'    ## json output file name
 
-
-project_name = 'Transmission NiSource'       ## name of hasty.ai project being imported into...
-output_file = 'claire_import.json'    ## json output file name
 
 ###############################################################################
 
 jpg,txt = '.jpg','.txt'
+# jpg,txt = '.JPG','.txt'
 
 def memoize_img_dim(img_file):
-    img_dim_file = img_file.replace('.jpg','.npy')
+    img_dim_file = img_file.replace(jpg,'.npy')
     if os.path.isfile(img_dim_file):
         img_dim = np.load(img_dim_file)
     else:

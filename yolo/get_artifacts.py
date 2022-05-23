@@ -12,6 +12,8 @@ from manifest_entry import ManifestEntry
 from inference_response import COCOCategory
 from collections import Counter
 
+DOWNLOAD_IMAGES = False
+# DOWNLOAD_LABELS = False
 ## sometimes image train set is very large.....
 DOWNLOAD_TRAIN = True
 
@@ -48,19 +50,24 @@ It will arrange the files in the same structure as 'training_start.py' script in
 ## Transmission ##
 
 # Transmission Master
-# DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/master'
-# MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/master/model/model2'
-# MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/transmission-master-3008-2c/'
+DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/rgb/master'
+MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/rgb/master/model/model5'
+MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/transmission-master-3008-5a/'
 
 ## Insulator Damage
-DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/damage/insulator_damage'
-MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/damage/insulator_damage/models/model1'
-MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/insulator-damage-1280-5m6-freeze3/'
+# DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/damage/insulator_damage'
+# MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/damage/insulator_damage/models/model1'
+# MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/insulator-damage-1280-5m6-freeze3/'
 
 ## Wood Damage
 # DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage'
 # MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/models/model2'
 # MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/wood-damage-2048-a/'
+
+## Pseudo-Thermal
+# DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/thermal/models/pseudo1'
+# MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/thermal/models/pseudo1'
+# MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/transmission-pseudo-thermal-1/'
 
 ########################################################3
 ## Solar ##
@@ -70,9 +77,16 @@ MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/
 # MODEL_DIR       = '/home/david/code/phawk/data/solar/thermal/component/models/model3'
 # MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/solar-pseudo-thermal-3/'
 
+## Thermal-Damage
+# DATA_DIR        = '/home/david/code/phawk/data/solar/thermal/damage'
+# MODEL_DIR       = '/home/david/code/phawk/data/solar/thermal/damage/models/model3'
+# MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/solar-thermal-damage-3/'
+
 #-----------------------------------------------
 IMG_DIR = '{}/images'.format(DATA_DIR)
-LAB_DIR = '{}/labels'.format(DATA_DIR)
+# LAB_DIR = '{}/labels'.format(DATA_DIR)
+LAB_DIR = '{}/labels'.format(MODEL_DIR)
+
 if MODEL_BUCKET:
     MANIFEST_URL    = MODEL_BUCKET + 'manifest.txt'
     MODEL_WTS_URL   = MODEL_BUCKET + 'weights.pt'
@@ -247,6 +261,7 @@ if __name__ == "__main__":
     manifest_path = download_s3_file(MANIFEST_URL, dst_dir=MODEL_DIR, overwrite=False)# True
     train_set, val_set, test_set, all_set = parse_manifest(manifest_path)
     
+    ## DOWNLOAD MODEL FILES....
     if CAT_URL:
         categories_path = download_s3_file(CAT_URL, dst_dir=MODEL_DIR, overwrite=False)
         categories = parse_categories(categories_path)
@@ -260,6 +275,7 @@ if __name__ == "__main__":
         download_s3_file(OUTPUT_LOG, dst_dir=MODEL_DIR, filename='output.log', overwrite=True)
         download_s3_file(JOB_JSON, dst_dir=MODEL_DIR, filename='job.json', overwrite=True)
     
+    ## DOWNLOAD IMAGES....
     img_sets = []
     img_sets.append((test_set, 'test'))
     img_sets.append((val_set, 'val'))
@@ -269,9 +285,10 @@ if __name__ == "__main__":
     for img_set in img_sets:
         img_set, name = img_set
         
-        print(f'Downloading {name} set... {len(img_set)} images...')
-        download_images(img_set)
-        print('...done.')
+        if DOWNLOAD_IMAGES:
+            print(f'Downloading {name} set... {len(img_set)} images...')
+            download_images(img_set)
+            print('...done.')
         
         ## filter test manifest entries on downloaded images
         img_files = [path_leaf(f) for f in glob.glob('{}/*.[jJ][pP][gG]'.format(IMG_DIR))]

@@ -18,10 +18,11 @@ from sklearn.metrics import average_precision_score
 import copy
 from shutil import copyfile
 import torch.nn.functional as FF
+import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
 # from FullyConvolutionalResnet18 import FullyConvolutionalResnet18
-
+LIM = 1000000000
 
 '''
 https://github.com/cfotache/pytorch_imageclassifier/blob/master/PyTorch_Image_Training.ipynb
@@ -47,7 +48,7 @@ def scale_img_1d(img, scale):
         q = scale/max(img.shape[1:])
     if q<1:
         h,w = int(img.shape[1]*q), int(img.shape[2]*q) 
-        return F.interpolate(img.unsqueeze(0), size=[h,w]).squeeze()
+        return FF.interpolate(img.unsqueeze(0), size=[h,w]).squeeze()
     return img
 
 def scale_img_2d(img, scale):
@@ -55,13 +56,13 @@ def scale_img_2d(img, scale):
     q = np.sqrt(scale/area)
     if q<1:
         h,w = int(img.shape[1]*q), int(img.shape[2]*q) 
-        return F.interpolate(img.unsqueeze(0), size=[h,w]).squeeze()
+        return FF.interpolate(img.unsqueeze(0), size=[h,w]).squeeze()
     return img
 
 # def scale_img(img):
 #     q = 2
 #     h,w = int(img.shape[1]*q), int(img.shape[2]*q) 
-#     return F.interpolate(img.unsqueeze(0), size=[h,w]).squeeze()
+#     return FF.interpolate(img.unsqueeze(0), size=[h,w]).squeeze()
 
 def scale_img(img, scale, pad=10):
     if scale>10000:
@@ -79,14 +80,14 @@ def scale_img(img, scale, pad=10):
         img = FF.pad(img, pad=(pad, pad, pad, pad), mode='constant', value=0)
     return img
 
-
+PAD = 10
 #####################################################################################
 
 # ITEM, SCALE, FC = 'Deteriorated', 1024, 256
 # # ITEM, SCALE, FC = 'Vegetation', 1024, 256
 
 # ##  dump_aep  dump_claire  dump_master  dist
-# DATA_ROOT = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/stuff/'
+# DATA_ROOT = '/home/david/code/phawk/data/generic/transmission/rgb/damage/wood_damage/stuff/'
 # DATA_PATH = DATA_ROOT + 'dist/'
 # MODEL_ROOT = '/home/david/code/davidsvaughn/ai_utils/resnet/models'
 # MODEL_FILE = f'{MODEL_ROOT}/{ITEM.lower()}/{ITEM.lower()}.pt'
@@ -98,25 +99,37 @@ def scale_img(img, scale, pad=10):
 
 ITEM, SCALE, RES, FC, NUMCLASS = 'Insulator_Type', 480, 18, 64, 3
 
-ALBUM = False
-ALBUM = True
-
 # ITEM, SCALE, RES, FC, NUMCLASS = 'Insulator_Material', 480, 18, 64, 3
 
+# ALBUM = False
+ALBUM = True
 
-ROOT  = '/home/david/code/phawk/data/generic/transmission/master/attribs/'
+LIM = 50000
+
+
+ROOT  = '/home/david/code/phawk/data/generic/transmission/rgb/master/attribs/'
 MODEL_PATH = os.path.join(ROOT, 'models', ITEM)
 MODEL_FILE  = os.path.join(MODEL_PATH, f'{ITEM}.pt')
-MODEL_FILE = os.path.join(MODEL_PATH, f'{ITEM}_chk.pt')
+# MODEL_FILE = os.path.join(MODEL_PATH, f'{ITEM}_chk.pt')
+# MODEL_FILE = os.path.join(MODEL_PATH, 'model1', f'{ITEM}.pt')
+
+# DATA_PATH = '/home/david/code/phawk/data/generic/transmission/rgb/claire/detect/transmaster3/crops/Insulator/'
+DATA_PATH = os.path.join(ROOT, 'test', ITEM)
+
 SAVE_PATH = os.path.join(ROOT, 'add', ITEM)
 mkdirs(SAVE_PATH)
 
-# DATA_PATH = '/home/david/code/phawk/data/generic/transmission/claire/detect/transmaster3/crops/Insulator/'
-DATA_PATH = os.path.join(ROOT, 'test', ITEM)
+
+## testing!!!!!
+DATA_PATH = os.path.join(ROOT, 'toy1', ITEM)
+PAD = 0
+
+DATA_PATH = '/home/david/code/phawk/data/generic/transmission/rgb/aep/detect/condish_3/crops/Insulator'
+
 
 ## sanity check 
-# DATA_PATH = '/home/david/code/phawk/data/generic/transmission/master/attribs/Insulator_Material/1/'
-# DATA_PATH = '/home/david/code/phawk/data/generic/transmission/master/attribs/check/'
+# DATA_PATH = '/home/david/code/phawk/data/generic/transmission/rgb/master/attribs/Insulator_Material/1/'
+# DATA_PATH = '/home/david/code/phawk/data/generic/transmission/rgb/master/attribs/check/'
 
 print(f'Loading model from:\n\t{MODEL_FILE}')
 
@@ -127,7 +140,9 @@ print(f'Loading model from:\n\t{MODEL_FILE}')
 # def classify():
 ## get input data
 F = np.array([path_leaf(f) for f in glob.glob(os.path.join(DATA_PATH,'*.jpg'))])
-random.shuffle(F)
+
+# random.seed(9191)
+# random.shuffle(F)
 
 ## load model
 # model = models.resnet18()
@@ -152,37 +167,34 @@ model.load_state_dict(torch.load(MODEL_FILE), strict=False)
 model.to(device)
 model.eval()
 
-totensorv2 = ToTensorV2()
+# totensorv2 = ToTensorV2()
+Anorm = A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
+# test_transforms = A.Compose([   A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)), 
+#                                 # ToTensorV2(),
+#                                 ])
 
 BS = 1
 P,S,data,files = [],[],[],[]
 for i,f in enumerate(F):
-    if i>1000: break
+    if i>LIM: break
     #################
     fn = os.path.join(DATA_PATH, f)
-    img = np.array(Image.open(fn))
-    
-    # img = img[...,::-1].copy() ## BGR => RGB
-    if not ALBUM:
-        img *= (1/255)
-    img = torch.FloatTensor(img.transpose([2,0,1]))
-    
-    # if ALBUM:
-    #     # img =  totensorv2(image=img)['image']
-    #     img = img.transpose([2,0,1])
-    #     img = torch.FloatTensor(img)
-    # else:
-    #     # img = img[...,::-1].copy() ## BGR => RGB
-    #     img = img.transpose([2,0,1]) * (1/255) ## [h,w,3] => [3,h,w]
-    #     img = torch.FloatTensor(img)
+    # img = np.array(Image.open(fn))
+    img = np.array(Image.open(fn).convert("RGB"))
 
+    if not ALBUM:
+        img = img * (1./255)
+    else:
+        img = Anorm(image=img)['image']
+        
+    img = torch.FloatTensor(img.transpose([2,0,1]))
     data.append(img)
     files.append(f)
     # if i>2 and ((i+1)%BS==0 or i==len(F)-1):
     if ((i+1)%BS==0 or i==len(F)-1):
         if i%100==0:
             print(f'{i}/{len(F)}')
-        data = [scale_img(img, SCALE) for img in data]
+        data = [scale_img(img, SCALE, PAD) for img in data]
         #######################################
         # szs = np.array([d.shape[1:] for d in data])
         # H,W = szs.max(0)
@@ -204,6 +216,8 @@ for i,f in enumerate(F):
 
 P = np.vstack(P)
 Y = P.argmax(1)
+
+sys.exit()
 
 for y,s in zip(Y,S):
     dst_path = os.path.join(SAVE_PATH, f'{y}')

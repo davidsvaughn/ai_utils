@@ -24,6 +24,11 @@ def write_lines(fn, lines):
     with open(fn, 'w') as f:
         for line in lines:
             f.write(f'{line}\n')
+
+def read_lines(fn):
+    with open(fn, 'r') as f:
+        lines = [n.strip() for n in f.readlines()]
+    return np.array([line for line in lines if len(line)>0])
             
 def increment_path(path, exist_ok=False, sep='_', mkdir=False):
     # Increment file or directory path, i.e. runs/exp --> runs/exp{sep}2, runs/exp{sep}3, ... etc.
@@ -77,60 +82,26 @@ def save_one_box(xyxy, im, file='image.jpg', gain=1.02, pad=5, BGR=False, save=T
         file = str(file).replace('.jpg', s)
         cv2.imwrite(file, crop)     
     return crop
-    
-# def convert_hasty2yolo(json_file, save_dir):
-    
-    # img_path = f"{Path(save_dir) / 'images'}" + '/'
-    # lab_path = Path(save_dir) / 'labels'
-    # lab_path = increment_path(lab_path)
-    # mkdirs(f'{lab_path}')
-
-#     # Import json
-#     with open(json_file) as f:
-#         data = json.load(f)
-    
-#     # save class names
-#     classes_file = f"{Path(save_dir) / 'classes.txt'}"
-#     classes = [d['name'] for d in data['categories']]
-#     write_lines(classes_file, classes)
-    
-#     # Create image dict
-#     images = {'%g' % x['id']: x for x in data['images']}
-
-#     # Write labels file
-#     for x in tqdm(data['annotations'], desc=f'Annotations {json_file}'):
-#         if x['iscrowd']:
-#             continue
-
-#         img = images['%g' % x['image_id']]
-#         h, w, f = img['height'], img['width'], img['file_name']
-        
-#         print(f)
-
-#         # The COCO box format is [top left x, top left y, width, height]
-#         box = np.array(x['bbox'], dtype=np.float64)
-#         box[:2] += box[2:] / 2  # xy top-left corner to center
-#         box[[0, 2]] /= w  # normalize x
-#         box[[1, 3]] /= h  # normalize y
-
-#         # Write
-#         if box[2] > 0 and box[3] > 0:  # if w > 0 and h > 0
-#             cls = x['category_id'] - 1  # class
-#             line = cls, *(box)  # cls, box or segments
-#             with open((lab_path / f).with_suffix('.txt'), 'a') as file:
-#                 file.write(('%g ' * len(line)).rstrip() % line + '\n')
 
 
 if __name__ == '__main__':
     
-    json_file = '/home/david/code/phawk/data/generic/transmission/master/hasty/master_exp_4.json'
-    save_dir = '/home/david/code/phawk/data/generic/transmission/master'
+    json_file = '/home/david/code/phawk/data/generic/transmission/rgb/master/hasty/master_exp_5.json'
     
+    img_path = '/home/david/code/phawk/data/generic/transmission/rgb/master/images/'
+    save_dir = '/home/david/code/phawk/data/generic/transmission/rgb/master/model/model5'
+    
+    # save_dir = '/home/david/code/phawk/data/generic/transmission/rgb/master'
+    # img_path = f"{Path(save_dir) / 'images'}" + '/'
+    
+
+    attrib_classes = None
+    attrib_classes = {'Insulator': ['Dead-end']}
+    
+    # save_crop = True
+    save_crop = False
     ##########################
     
-    # convert_hasty2yolo(json_file, save_dir)
-    
-    img_path = f"{Path(save_dir) / 'images'}" + '/'
     lab_path = Path(save_dir) / 'labels'
     lab_path = increment_path(lab_path)
     mkdirs(f'{lab_path}')
@@ -138,6 +109,22 @@ if __name__ == '__main__':
     # Import json
     with open(json_file) as f:
         data = json.load(f)
+
+    ## classes
+    json_classes = np.array([d['class_name'] for d in data['label_classes']])
+    classes_file = f"{Path(save_dir) / 'classes.txt'}"
+    if os.path.exists(classes_file):
+        classes = read_lines(classes_file)
+        idx = ~np.in1d(json_classes, classes)
+        if idx.sum()>0:
+            print(f'Removing classes: {json_classes[idx]}')
+        idx = ~np.in1d(classes, json_classes)
+        if idx.sum()>0:
+            print(f'Adding classes: {classes[idx]}')
+    else:
+        classes = json_classes
+        write_lines(classes_file, classes)
+    classes = list(classes)
     
     ## label attributes
     attrib_values = {}
@@ -147,11 +134,6 @@ if __name__ == '__main__':
                 continue
             attrib_values[att['name']] = ['None'] + att['values']
     
-    ## save class names
-    classes_file = f"{Path(save_dir) / 'classes.txt'}"
-    classes = [d['class_name'] for d in data['label_classes']]
-    write_lines(classes_file, classes)
-    
     class_attribs = {}
     for d in data['label_classes']:
         for att in d['attributes']:
@@ -160,16 +142,17 @@ if __name__ == '__main__':
                 if class_name not in class_attribs:
                     class_attribs[class_name] = []
                 class_attribs[class_name].append(att)
-                
-    for k,vals in attrib_values.items():
-        att = k.replace(' ','_') 
-        att_path = os.path.join(save_dir, 'attribs', att)
-        mkdirs(att_path)
-        att_file = os.path.join(save_dir, 'attribs', f'{att}.txt')
-        write_lines(att_file, vals)
-        for i,_ in enumerate(vals):
-            val_path = os.path.join(att_path, f'{i}')
-            mkdirs(val_path)
+            
+    if save_crop:    
+        for k,vals in attrib_values.items():
+            att = k.replace(' ','_') 
+            att_path = os.path.join(save_dir, 'attribs', att)
+            mkdirs(att_path)
+            att_file = os.path.join(save_dir, 'attribs', f'{att}.txt')
+            write_lines(att_file, vals)
+            for i,_ in enumerate(vals):
+                val_path = os.path.join(att_path, f'{i}')
+                mkdirs(val_path)
     
     tags = {}
     all_files = []
@@ -196,19 +179,31 @@ if __name__ == '__main__':
             # Write
             if box[2] > 0 and box[3] > 0:  # if w > 0 and h > 0
                 class_name = lab['class_name']
+
+                ## class attributes...
+                if class_name in class_attribs:
+                    for attrib in class_attribs[class_name]:
+                        attrib_val = lab['attributes'][attrib] if attrib in lab['attributes'] else 'None'
+                        
+                        if attrib_classes is not None and class_name in attrib_classes:
+                            if attrib_val in attrib_classes[class_name]:
+                                class_name = f'{attrib_val} {class_name}'
+                                if class_name not in classes:
+                                    print(f'ERROR: {class_name} not in class list')
+                                    sys.exit()
+
+                        if save_crop:
+                            att = attrib_values[attrib].index(attrib_val)
+                            att_path = os.path.join(save_dir, 'attribs', attrib.replace(' ','_'), f'{att}')
+                            save_one_box(XYXY, im, file=os.path.join(att_path, f), BGR=True)
+                
+                ## write to yolo label file
+                if class_name not in classes:
+                    continue
                 cls = classes.index(class_name)
                 line = cls, *(box)  # cls, box or segments
                 with open((lab_path / f).with_suffix('.txt'), 'a') as file:
                     file.write(('%g ' * len(line)).rstrip() % line + '\n')
-                ##
-                if class_name in class_attribs:
-                    for attrib in class_attribs[class_name]:
-                        attrib_val = lab['attributes'][attrib] if attrib in lab['attributes'] else 'None'
-                        att = attrib_values[attrib].index(attrib_val)
-                        att_path = os.path.join(save_dir, 'attribs', attrib.replace(' ','_'), f'{att}')
-                        save_one_box(XYXY, im, file=os.path.join(att_path, f), BGR=True)
-                        
-    sys.exit()
                     
     ################################
     ## setup image tag classification...

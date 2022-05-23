@@ -12,6 +12,16 @@ from skmultilearn.model_selection import IterativeStratification
 
 ''' Set these file paths appropriately... '''
 
+DATA_DIR            = '/home/david/code/phawk/data/generic/transmission/rgb/master/model/model5/'
+S3_IMG_BUCKETS      = ['s3://ph-dvaughn-dev/transmission/data/master/images/',]
+
+MANIFEST_FILE       = DATA_DIR + 'manifest.txt'
+MANIFEST_STATS_FILE = DATA_DIR + 'manifest_stats.txt'
+CATEGORIES_FILE     = DATA_DIR + 'categories.json'
+CLASSES_FILE        = DATA_DIR + 'classes.txt'
+LABEL_DIRS          = [DATA_DIR + 'labels',]
+IMAGE_DIRS          = ['/home/david/code/phawk/data/generic/transmission/rgb/master/images',]
+
 ## insulator_damage...
 # DATA_DIR            = '/home/david/code/phawk/data/generic/transmission/damage/insulator_damage/' ## local save directory
 # MANIFEST_FILE       = DATA_DIR + 'manifest.txt'
@@ -24,15 +34,15 @@ from skmultilearn.model_selection import IterativeStratification
 ## CLASSES_FILE        = '/home/david/code/phawk/data/solar/indivillage/classes.txt'
 ## LABEL_DIRS          = ['/home/david/code/phawk/data/solar/indivillage/labels',]
 
-DATA_DIR            = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/' ## local save directory
-S3_IMG_BUCKETS      = ['s3://ai-labeling/transmission/images/wood/',]
+# DATA_DIR            = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/' ## local save directory
+# S3_IMG_BUCKETS      = ['s3://ai-labeling/transmission/images/wood/',]
 
-MANIFEST_FILE       = DATA_DIR + 'manifest.txt'
-MANIFEST_STATS_FILE = DATA_DIR + 'manifest_stats.txt'
-CATEGORIES_FILE     = DATA_DIR + 'categories.json'
-CLASSES_FILE        = DATA_DIR + 'classes.txt'
-LABEL_DIRS          = [DATA_DIR + 'labels',]
-IMAGE_DIRS          = [DATA_DIR + 'images',]
+# MANIFEST_FILE       = DATA_DIR + 'manifest.txt'
+# MANIFEST_STATS_FILE = DATA_DIR + 'manifest_stats.txt'
+# CATEGORIES_FILE     = DATA_DIR + 'categories.json'
+# CLASSES_FILE        = DATA_DIR + 'classes.txt'
+# LABEL_DIRS          = [DATA_DIR + 'labels',]
+# IMAGE_DIRS          = [DATA_DIR + 'images',]
 
 
 '''
@@ -40,10 +50,10 @@ TRAIN/TEST/VAL split weightings:
 - DON'T need to normalize... just give *relative* weightings ** ( the code will normalize so sum[weights]==1 )
 - If TEST or VAL weight==0, then TEST SET == VAL SET
 '''
-SPLITS = [20,4,0]  ## [TRAIN,TEST,VAL] relative proportions
+SPLITS = [20,5,0]  ## [TRAIN,TEST,VAL] relative proportions
 
 ## make empty label files for images with no label file...
-MAKE_EMPTY_LABELS = True
+MAKE_EMPTY_LABELS = False
 EMPTY_SPLIT = -1
 # EMPTY_SPLIT = 0.8
 
@@ -194,7 +204,10 @@ def build_json_string(label_file, name='train', blacklist=None):
 
     ###############################
     #### sometimes...  .jpg ==> .JPG
-    img_file = label_file.replace('/labels/','/images/').replace('.txt','.jpg')
+    i = LABEL_DIRS.index(path)
+    img_path = IMAGE_DIRS[i]
+    img_file = os.path.join(img_path, x.replace('.txt','.jpg'))
+    # img_file = label_file.replace('/labels/','/images/').replace('.txt','.jpg')
     if not os.path.exists(img_file):
         img_file = img_file.replace('.jpg','.JPG')
     if not os.path.exists(img_file):

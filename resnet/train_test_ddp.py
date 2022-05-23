@@ -273,7 +273,7 @@ class Transforms:
         return self.transforms(image=np.array(img))['image']
 
 def load_split_train_test(datadir, args, rank, seed, k=5, test_fold=0, loader=None):
-    ###############################################################################
+    #################################################################################################################
     ## original transforms
     # train_transforms = transforms.Compose([
     #                                     transforms.RandomHorizontalFlip(),
@@ -292,7 +292,7 @@ def load_split_train_test(datadir, args, rank, seed, k=5, test_fold=0, loader=No
     #                                   ])
     
     
-    ###############################################################################
+    #################################################################################################################
     ## albumentations....
     train_transforms = A.Compose(
         [
@@ -301,20 +301,20 @@ def load_split_train_test(datadir, args, rank, seed, k=5, test_fold=0, loader=No
             A.ShiftScaleRotate(shift_limit=0.1, scale_limit=[0.5,1], rotate_limit=15, p=0.5),
             A.RGBShift(r_shift_limit=15, g_shift_limit=15, b_shift_limit=15, p=0.5),
             A.RandomBrightnessContrast(p=0.5),
-            # A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             ToTensorV2(),
         ]
     )
     test_transforms = A.Compose(
         [
-            # A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             ToTensorV2(),
         ]
     )
     train_transforms = Transforms(train_transforms)
     test_transforms = Transforms(test_transforms)
     
-    ###############################################################################
+    #################################################################################################################
     
     train_data = ImageFolderWithPathsAndIndex(datadir, transform=train_transforms, loader=loader)
     test_data = ImageFolderWithPathsAndIndex(datadir, transform=test_transforms, loader=loader)
@@ -371,50 +371,64 @@ def train_model(rank, args):
         setup(rank, args.world_size)
     torch.cuda.set_device(rank)
     PLOT = True
+    SAVE = True
 
     ##################################################################################
     ## WOOD DAMAGE ##
 
-    LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/tags/'
+    LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/rgb/damage/wood_damage/tags/'
     REMOTE_ROOT = '/home/ubuntu/data/wood_damage/tags/'
     
-    ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Deteriorated', 1024, 50, 256, [0.66,0.33], 300, 0, 657657
-    cv_complete = True
+    # # ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Deteriorated', 1024, 18, 256, [0.66,0.33], 300, 0, 657657
+    # ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Deteriorated', 1024, 50, 64, [0.66,0.33], 300, 0, 79797
+    # cv_complete = False
+    # K, alpha = 5, 0.5
+    # args.batch_size = 32
+    # args.epochs = 30
+    
+    
+    # ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Vegetation', 1024, 18, 64, [0.66,0.33], 200, 0, 191919
+    ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Vegetation', 1024, 34, 64, [0.66,0.33], 200, 0, 71717
+    cv_complete = False
     K, alpha = 5, 0.5
     args.batch_size = 32
-    args.epochs = 32
-    
-    
-    # ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Vegetation', 1024, 34, 64, [0.66,0.33], 200, 0.25, 191919
-    # cv_complete = True
-    # K, alpha = 5, 0.25
-    # args.batch_size = 32
-    # args.epochs = 32
+    args.epochs = 24
 
     ##################################################################################
     ## INSULATOR TYPE ##
 
-    # LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/master/attribs/'
+    # LOCAL_ROOT  = '/home/david/code/phawk/data/generic/transmission/rgb/master/attribs/'
     # REMOTE_ROOT = '/home/ubuntu/data/attribs/'
 
-    # ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Insulator_Type', 480, 18, 64, [0.66,0.33], 300, 0.25, 45245
+    # # ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Insulator_Type', 480, 18, 64, [0.66,0.33], 300, 0.25, 45245
+    # ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Insulator_Type', 480, 34, 64, [0.66,0.33], 300, 0.25, 73737
     # cv_complete = False
-    # K, alpha = 5, 0.5
+    # K, alpha = 5, 0.25
     # args.batch_size = 32
-    # args.epochs = 20
+    # args.epochs = 15
 
     ###############################
     ## INSULATOR MATERIAL ##
 
     # ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Insulator_Material', 480, 18, 64, [0.66,0.66], 320, 0.25, 1111
+    # ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Insulator_Material', 480, 34, 64, [0.66,0.33], 360, 0.25, 73737
     # cv_complete = False
-    # K, alpha = 5, 0.5
+    # K, alpha = 7, 0.25
     # args.batch_size = 32
-    # args.epochs = 20
+    # args.epochs = 15
     
+    ###############################
+    # ## testing
+    # LOCAL_ROOT = '/home/david/code/phawk/data/anomaly/pge/test/detect/comp/crops/'
+    # ITEM, scale, args.res, fc, drops, print_every, rot, SEED  = 'Insulator_Material', 480, 18, 64, [0.66,0.33], 4, 0.25, 45245
+    # cv_complete = False
+    # K, alpha = 3, 0.25
+    # args.batch_size = 2
+    # args.epochs = 100
+    # PLOT = False
+    # SAVE = False
     
     ##################################################################################
-    SAVE = True
     home = str(Path.home())
     ROOT = LOCAL_ROOT if home in LOCAL_ROOT else REMOTE_ROOT
     PLOT = PLOT if home in LOCAL_ROOT else False
@@ -435,8 +449,6 @@ def train_model(rank, args):
         print(f'SEED={SEED}')
     
     for test_fold in range(K):
-        
-        MODEL_CHKPT = os.path.join(MODEL_PATH, f'{ITEM}_{test_fold+1}.pt')
 
         set_random_seeds(random_seed=SEED)
 
@@ -714,12 +726,14 @@ def train_model(rank, args):
                 Ts.extend(T)
                 Ys.extend(Y)
             if SAVE:
+                if cv_complete:
+                    MODEL_FILE = os.path.join(MODEL_PATH, f'{ITEM}_{test_fold+1}.pt')
                 torch.save(best_model.state_dict(), MODEL_FILE)
                 print(f'Best Model saved to:\n\t{MODEL_FILE}')
         
         ## break CV loop ?
-        if not cv_complete: break
-        # if test_fold==3: break
+        if not cv_complete: 
+            break
         
     ## END K-FOLD LOOP...
     ###########################################################
