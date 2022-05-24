@@ -16,9 +16,15 @@ from random import shuffle as shuf
 # from functools import total_ordering
 from scipy.spatial.distance import cdist
 from shutil import copyfile
+import networkx as nx
 
 txt,jpg,JPG = '.txt','.jpg','.JPG'
 
+class adict(dict):
+    def __init__(self, *av, **kav):
+        dict.__init__(self, *av, **kav)
+        self.__dict__ = self
+        
 def mkdirs(path):
     if not os.path.exists(path):
         os.makedirs(path)
@@ -176,70 +182,6 @@ def bbox_iou2(bbox_gt, bbox_pred, IOU_THRESH=0.1):
             
     return iou_matrix
 
-
-def match_bboxes(bbox_gt, bbox_pred, IOU_THRESH=0.1):
-    '''
-    Given sets of true and predicted bounding-boxes,
-    determine the best possible match.
-
-    Parameters
-    ----------
-    bbox_gt, bbox_pred : N1x4 and N2x4 np array of bboxes [x1,y1,x2,y2]. 
-      The number of bboxes, N1 and N2, need not be the same.
-    
-    Returns
-    -------
-    (idxs_true, idxs_pred, ious, labels)
-        idxs_true, idxs_pred : indices into gt and pred for matches
-        ious : corresponding IOU value of each match
-        labels: vector of 0/1 values for the list of detections
-    '''
-    n_true = bbox_gt.shape[0]
-    n_pred = bbox_pred.shape[0]
-    MAX_DIST = 1.0
-    MIN_IOU = 0.0
-
-    # NUM_GT x NUM_PRED
-    iou_matrix = np.zeros((n_true, n_pred))
-    for i in range(n_true):
-        for j in range(n_pred):
-            iou_matrix[i, j] = _bbox_iou(bbox_gt[i,:], bbox_pred[j,:])
-
-    if n_pred > n_true:
-        # there are more predictions than ground-truth - add dummy rows
-        diff = n_pred - n_true
-        iou_matrix = np.concatenate( (iou_matrix, np.full((diff, n_pred), MIN_IOU)), axis=0)
-
-    if n_true > n_pred:
-        # more ground-truth than predictions - add dummy columns
-        diff = n_true - n_pred
-        iou_matrix = np.concatenate( (iou_matrix, np.full((n_true, diff), MIN_IOU)), axis=1)
-
-    # call the Hungarian matching
-    idxs_true, idxs_pred = scipy.optimize.linear_sum_assignment(1 - iou_matrix)
-
-    if (not idxs_true.size) or (not idxs_pred.size):
-        ious = np.array([])
-    else:
-        ious = iou_matrix[idxs_true, idxs_pred]
-
-    # remove dummy assignments
-    sel_pred = idxs_pred<n_pred
-    idx_pred_actual = idxs_pred[sel_pred] 
-    idx_gt_actual = idxs_true[sel_pred]
-    ious_actual = iou_matrix[idx_gt_actual, idx_pred_actual]
-    sel_valid = (ious_actual > IOU_THRESH)
-    label = sel_valid.astype(int)
-    K1, K2, IOUS = idx_gt_actual[sel_valid], idx_pred_actual[sel_valid], ious_actual[sel_valid]
-    
-    ########################################################################
-    ious = np.array([box_iou(bbox_gt[k1], bbox_pred[k2]) for k1,k2 in zip(K1, K2)])
-    sv = (ious > IOU_THRESH)
-    K1, K2, IOUS = K1[sv], K2[sv], ious[sv]
-    
-    ########################################################################
-    return K1, K2, IOUS
-
 ## hungarian matching algorithm
 def hm(D):
     n1,n2 = D.shape
@@ -354,76 +296,180 @@ def distmats(b1,b2):
     return D,U
     # return U2,U
 
-def align_loop(b1,b2,thresh=0.01):
+def distmats(b1,b2):
+    D = corner_dist_matrix(b1,b2)
+    U = bbox_ious(b1,b2)
+    return D,U
+
+def align(b1,b2,iou_min=0.4):
+    # D = corner_dist_matrix(b1,b2)
     D,U = distmats(b1,b2)
-    ii,jj = np.arange(len(b1)), np.arange(len(b2))
-    while True:
-        i,j,d,q = hm(D[ii[:,None],jj[None,:]])
-        ###
-        return np.in1d(ii,i), np.in1d(jj,j)
-        ###
-        ii,jj = ii[i],jj[j]
-        u = U[ii,jj]
-        z = u>thresh
-        if z.mean()==1:
-            break
-        ii,jj = ii[z],jj[z]
-    i,j = ii,jj
-    ii,jj = np.arange(len(b1)), np.arange(len(b2))
-    return np.in1d(ii,i), np.in1d(jj,j)
+    i,j,d,_ = hm(D)
+    u = U[i,j]
+    z = u>iou_min
+    i,j = i[z],j[z]
+    n1,n2 = len(b1),len(b2)
+    # ii,jj = np.arange(len(b1)), np.arange(len(b2))
+    # fi, fj = np.in1d(ii,i), np.in1d(jj,j)
+    # ni, nj = np.where(~fi)[0], np.where(~fj)[0]
+    # return i,j,ni,nj
+    # return adict({'i':i,'j':j,'t':[(ii,jj) for ii,jj in zip(i,j)]})
+    # M = np.zeros([n1,n2])
+    # M[i,j] = 1
+    # return adict({'i':i,'j':j,'M':M})
+    return adict({'i':i,'j':j})
+
+def getframe(n,ns):
+    for i in range(len(ns)):
+        if n < ns[i]:
+            return i,n
+        n = n-ns[i]
+    return len(ns)-1,n
     
 ################################
 
-p = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0001_1/component/labels/'
+pth = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0001_1/component/labels/'
 
-lab_files = np.array(get_filenames(p, txt))
+pth2 = pth.replace('/labels/', '/labels_track/')
+mkdirs(pth2)
+
+lab_files = np.array(get_filenames(pth, txt))
 idx = np.array([int(f.replace(txt,'').split('_')[-1]) for f in lab_files])
 a = idx.argsort()
 lab_files, idx = lab_files[a], idx[a]
 
-dmax = 1e-4
-iou_min = 0.0
+## sample size, min clique size...
+m1,m2 = 10,6
+## step size, pool size...
+s1 = 3
+s2 = m1
 
-r = 0.2
-t = 0.5
+# seed = np.random.randint(10000)
+seed = 1234
+# print(f'seed = {seed}')
+np.random.seed(seed)
 
-f = lab_files[0]
-x = get_labels(p+f)[:,1:5]
-b = xywh2xyxy(x)
-w = np.ones(len(x)) * 0.95
-
-for k,f2 in enumerate(lab_files[2:]):
-    # if k==96: break
-#######################
-    f1 = lab_files[k+1]
-    x1 = get_labels(p+f1)[:,1:5]
-    b1 = xywh2xyxy(x1)
-    f2 = lab_files[k+2]
-    x2 = get_labels(p+f2)[:,1:5]
-    b2 = xywh2xyxy(x2)
-    i,j = align_loop(b1,b2,iou_min)
-    draw2boxes(b1[i],b2[j], np.where(i)[0], np.where(j)[0], txt = f'frame {k+1}')
-    b1,x1 = b1[i],x1[i]
-    #####
-    i,j = align_loop(b,b1,iou_min)
-    draw2boxes(b[i],b1[j], np.where(i)[0], np.where(j)[0], txt = f'frame {k+1}', c1='m',c2='g')
-    # if len(z)<len(i):
-    #     break
-    xx = x1[~j]
-    # sys.exit()
-    # rr = r
-    # rr = r * iou[:,None]
-    x[i] = (1-r)*x[i] + r*x1[j]
-    w = (1-r)*w
-    w[i] = w[i]+r#r.squeeze()
+s = -s1
+H,S = {},set()
+while True:
+    s += s1
+    if s+s2 > len(lab_files):
+        break
+    ###### testing...
+    # if s>100: break
+    ######
+    if s%50<s1:
+        print(f'{s}/{len(lab_files)}')
+    F = np.random.permutation(np.arange(s,s+s2))[:m1]
+    F.sort()
+    ns,bs = [],[]
+    for f in F:
+        fn = lab_files[f]
+        x = get_labels(pth+fn)[:,1:5]
+        b = xywh2xyxy(x)
+        bs.append(b)
+        ns.append(len(b))
+    ns = np.array(ns)
+    n = ns.sum()
+    M = np.zeros([n,n])
     
-    ww = np.ones(len(xx)) * t
-    x = np.vstack([x,xx])
-    w = np.hstack([w,ww])
-    idx = np.where(w>t)[0]
-    b = xywh2xyxy(x)
-    if len(idx)==0:
+    for a in range(len(bs)):
+        for b in range(a+1,len(bs)):
+            p = align(bs[a],bs[b])
+            x = p.i + ns[:a].sum()
+            y = p.j + ns[:b].sum()
+            M[x,y] = 1
+            M[y,x] = 1
+    
+    G = nx.from_numpy_matrix(M, create_using=nx.Graph)
+    Q = list(nx.clique.find_cliques(G))
+    Q = [sorted(q) for q in Q if len(q)>=m2]
+    
+    for q in Q:
+        T = [getframe(qq,ns) for qq in q]
+        t1 = T[0]
+        t1 = (F[t1[0]],t1[1])
+        S.add(t1)
+        for t2 in T[1:]:
+            t2 = (F[t2[0]],t2[1])
+            S.add(t2)
+            if t2 not in H:
+                H[t2] = set()
+            H[t2].add(t1)
+            if t1[0]==t2[0]:
+                print(f'??????? {t1} --> {t2}')
+                sys.exit()
+
+def tupsort(L, reverse=False):
+    return sorted(L, key=lambda tup: tup[0] + tup[1]/1000, reverse=reverse)
+
+def find(data, i):
+    if i != data[i]:
+        data[i] = find(data, data[i])
+    return data[i]
+
+def union(data, i, j):
+    pi, pj = find(data, i), find(data, j)
+    if pi != pj:
+        t1,t2 = S[pi],S[pj]
+        if t1[0]==t2[0]:
+            print(f'??????? {t1} --> {t2}')
+            sys.exit()
+        data[pi] = pj
+
+S = tupsort(list(S), reverse=True)
+n = len(S)
+data = [i for i in range(n)]
+Sidx = {t:i for i,t in enumerate(S)}
+
+for k,t1 in enumerate(S):
+    if t1 not in H:
         continue
-    
-    # drawboxes(b[idx], idx, txt = f'frame {k+1}')
-    # sys.exit()
+    tt = H[t1]
+    if k%1000==0:
+        print(f'{k}/{len(H)}')
+    for t2 in tt:
+        if t1[0]==t2[0]:
+            print(f'??????? {t1} --> {t2}')
+            sys.exit()
+        i,j = Sidx[t1],Sidx[t2]
+        union(data, i, j)
+
+Z = {}
+for i in range(n):
+    t1 = S[i]
+    j = find(data, i)
+    t2 = S[j]
+    if t2 not in Z:
+        Z[t2] = set()
+    Z[t2].add(t1)
+    # print(f'{t1} --> {t2}')
+
+V = list(Z.values())
+Z = {}
+for v in V:
+    v = tupsort(list(v))
+    Z[v[0]] = v
+
+L = []
+H = {}
+K = tupsort(list(Z.keys()))
+for i,k in enumerate(K):
+    s = Z[k]
+    L.append(s)
+    for t in s:
+        H[t] = i
+    print(f'{i}\t{s[:3]}')
+
+
+for i,lf in enumerate(lab_files):
+    labs = get_labels(pth+lf)
+    labs = [[int(x[0])] + x[1:] for x in labs.tolist()]
+    lines = []
+    for j in range(len(labs)):
+        t = (i,j)
+        c = H[t] if t in H else -1
+        labs[j][0] = c
+        lines.append(' '.join([str(x) for x in labs[j]]))
+    lf2 = pth2 + lf
+    write_lines(lf2, lines)
