@@ -84,6 +84,37 @@ def xyxy2xywh(xyxy, clip=True):
     if len(A.shape)==2: return A
     return A[None,:]
 
+def minmax_normalize(M):
+    return  M.min(0), M.ptp(0)
+    # return  (M[s:].max(0)-M[s:].min(0))/2, M[s:].ptp(0)
+
+def standardize(M):
+    return M.mean(0), M.std(0)
+
+## 1=minmax, 2=standardize
+def normalize(A, t=2, e=0.1):
+    B = A.copy()
+    A = A.reshape(-1,2)
+    
+    if e>0:
+        xy = (B[:,:2]+B[:,2:])/2
+        idx = np.hstack([xy>e, (1-xy)>e]).all(1)
+        B = B[idx]
+        
+    B = B.reshape(-1,2)
+    if t==0:
+        print('NO NORMALIZATION AT ZERO!!!!!!!!')
+        return 1/0
+    if abs(t)==2:
+        mu, sig = standardize(B)
+    else: #abs(t)==1)
+        mu, sig = minmax_normalize(B)
+    if t<0: ## retain H/W ratio
+        sig = sig.max() + sig*0
+        
+    B = (A-mu) / sig
+    return B.reshape(-1,4)
+
 def fixbox(a):
     b = a.copy()
     if b[0]>b[2]:
@@ -224,12 +255,14 @@ def corner4dist(b1, b2):
     #######
     return msd
 
+## 1=minmax, 2=standardize
 def corner4dists(A1, A2):#, norm_type=0): ## 0=standardize, 1=minmax
     # if abs(norm_type)>0:
     #     A1 = normalize(A1.reshape((-1,2)), t=norm_type).reshape((-1,4))
     #     A2 = normalize(A2.reshape((-1,2)), t=norm_type).reshape((-1,4))
     return np.array([corner4dist(a1,a2) for a1,a2 in zip(A1,A2)])
 
+## 1=minmax, 2=standardize
 def corner_dist_matrix(A1, A2):#, norm_type=1):
     ## minmax (0,1) normalize
     # if abs(norm_type)>0:
@@ -243,7 +276,7 @@ def corner_dist_matrix(A1, A2):#, norm_type=1):
     return D
 
 def drawboxes(M1, idx1=None, txt=None):
-    M1 = M1.reshape((-1,2))
+    M1 = M1.copy().reshape((-1,2))
     fig, ax = plt.subplots()
     xymin, xymax = M1.min(0), M1.max(0)
     ## reverse y coords....
@@ -262,8 +295,8 @@ def drawboxes(M1, idx1=None, txt=None):
     plt.show()
     
 def draw2boxes(M1, M2, idx1=None, idx2=None, txt=None, offset=0, c1='b', c2='r'):
-    M1 = M1.reshape((-1,2))
-    M2 = M2.reshape((-1,2)) + offset
+    M1 = M1.copy().reshape((-1,2))
+    M2 = M2.copy().reshape((-1,2)) + offset
     
     fig, ax = plt.subplots()
     MM = np.vstack([M1,M2])
@@ -289,34 +322,57 @@ def draw2boxes(M1, M2, idx1=None, idx2=None, txt=None, offset=0, c1='b', c2='r')
         plt.title(txt)
     plt.show()
 
-def distmats(b1,b2):
-    D = corner_dist_matrix(b1,b2)
+def distmats(b1,b2,t=0):
+    if t>0:
+        b1 = normalize(b1, t=t)
+        b2 = normalize(b2, t=t)
+    
+    # b1 = fixboxes(b1)
+    # b2 = fixboxes(b2)
+    
     U = bbox_ious(b1,b2)
-    # U2 = bbox_iou2(b1,b2)
-    return D,U
-    # return U2,U
-
-def distmats(b1,b2):
     D = corner_dist_matrix(b1,b2)
-    U = bbox_ious(b1,b2)
     return D,U
 
-def align(b1,b2,iou_min=0.4):
-    # D = corner_dist_matrix(b1,b2)
-    D,U = distmats(b1,b2)
+## norm_type: 0=NO normalization, 1=minmax, 2=standardize
+def align(b1, b2, iou_min=0.4):
+    D,U = distmats(b1, b2)  
     i,j,d,_ = hm(D)
     u = U[i,j]
     z = u>iou_min
     i,j = i[z],j[z]
-    n1,n2 = len(b1),len(b2)
-    # ii,jj = np.arange(len(b1)), np.arange(len(b2))
-    # fi, fj = np.in1d(ii,i), np.in1d(jj,j)
-    # ni, nj = np.where(~fi)[0], np.where(~fj)[0]
-    # return i,j,ni,nj
-    # return adict({'i':i,'j':j,'t':[(ii,jj) for ii,jj in zip(i,j)]})
-    # M = np.zeros([n1,n2])
-    # M[i,j] = 1
-    # return adict({'i':i,'j':j,'M':M})
+    return adict({'i':i,'j':j})
+
+zmin = 0.5
+quint=0.75
+
+def median(x,q):
+    i = int(q*len(x))
+    return sorted(x)[i]
+
+## norm_type: 0=NO normalization, 1=minmax, 2=standardize
+def align_twice(a1, a2, iou_min=0.4, norm_type=2):
+    # global d,u
+    D,U = distmats(a1, a2)#, t=norm_type)    
+    i,j,d,_ = hm(D)
+    u = U[i,j]
+    # if d.ptp()>0.01: sys.exit()
+    
+    z = u>(0 if norm_type>0 else iou_min)
+    if z.mean()<zmin: z=d<median(d, quint)#d.mean()# + d.std()
+    
+    i,j = i[z],j[z]
+    ## run again ?? ############
+    if norm_type>0:
+        b1,b2 = a1[i],a2[j]
+        D,U = distmats(b1, b2, t=norm_type)
+        ii,jj,d,_ = hm(D)
+        u = U[ii,jj]
+        z = u>iou_min
+        if z.mean()<zmin: z=d<median(d, quint)# d < d.mean()# + d.std()
+        ii,jj = ii[z],jj[z]
+        i,j = i[ii],j[jj]
+    ############################
     return adict({'i':i,'j':j})
 
 def getframe(n,ns):
@@ -328,7 +384,7 @@ def getframe(n,ns):
     
 ################################
 
-pth = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0001_1/component/labels/'
+pth = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0001_1/component_track/labels/'
 
 pth2 = pth.replace('/labels/', '/labels_track/')
 mkdirs(pth2)
@@ -338,34 +394,74 @@ idx = np.array([int(f.replace(txt,'').split('_')[-1]) for f in lab_files])
 a = idx.argsort()
 lab_files, idx = lab_files[a], idx[a]
 
-## sample size, min clique size...
-m1,m2 = 10,6
-## step size, pool size...
-s1 = 3
-s2 = m1
+## pool size
+m1 = 10
+# min clique size
+m2 = 5
+## step size
+step = 2
+## iou min
+iou_min=0.3
+## normalization: 0=NO normalization, 1=minmax, 2=standardize
+norm_type=2
+
+
+
+##############################################################
+# ## testing!!
+# i1,i2 = 160,170
+# x1 = get_labels(pth+lab_files[i1])[:,1:5]
+# x2 = get_labels(pth+lab_files[i2])[:,1:5]
+# b1 = xywh2xyxy(x1)
+# b2 = xywh2xyxy(x2)
+# draw2boxes(b1,b2)
+
+# # e = 0.1
+# # idx1 = np.hstack([x1[:,:2]>e, (1-x1[:,:2])>e]).all(1)
+# # idx2 = np.hstack([x2[:,:2]>e, (1-x2[:,:2])>e]).all(1)
+# # b1,b2 = b1[idx1], b2[idx2]
+# # draw2boxes(b1,b2)
+
+# a1,a2 = normalize(b1, t=2), normalize(b2, t=2)
+# draw2boxes(a1,a2)
+
+# D,U = distmats(a1, a2)
+# # draw2boxes(a1,a2)
+
+# sys.exit()
+# #####################################################################
+
 
 # seed = np.random.randint(10000)
 seed = 1234
 # print(f'seed = {seed}')
 np.random.seed(seed)
 
-s = -s1
+s = -step
 H,S = {},set()
 while True:
-    s += s1
-    if s+s2 > len(lab_files):
+    s += step
+    if s+m1 > len(lab_files):
         break
     ###### testing...
     # if s>100: break
     ######
-    if s%50<s1:
+    if s%50<step:
         print(f'{s}/{len(lab_files)}')
-    F = np.random.permutation(np.arange(s,s+s2))[:m1]
+    F = np.random.permutation(np.arange(s,s+m1))[:m1]
     F.sort()
+    
     ns,bs = [],[]
     for f in F:
         fn = lab_files[f]
-        x = get_labels(pth+fn)[:,1:5]
+        x = get_labels(pth+fn)#[:,1:5]
+        ###############
+        ## confidence filter?
+        # conf = x[:,-1]
+        # idx = conf>0.25
+        # x = x[idx]
+        ###############
+        x = x[:,1:5]
         b = xywh2xyxy(x)
         bs.append(b)
         ns.append(len(b))
@@ -375,7 +471,10 @@ while True:
     
     for a in range(len(bs)):
         for b in range(a+1,len(bs)):
-            p = align(bs[a],bs[b])
+            
+            # p = align(bs[a], bs[b], iou_min=iou_min, norm_type=norm_type)
+            p = align_twice(bs[a], bs[b], iou_min=iou_min, norm_type=norm_type)
+            
             x = p.i + ns[:a].sum()
             y = p.j + ns[:b].sum()
             M[x,y] = 1
@@ -384,6 +483,8 @@ while True:
     G = nx.from_numpy_matrix(M, create_using=nx.Graph)
     Q = list(nx.clique.find_cliques(G))
     Q = [sorted(q) for q in Q if len(q)>=m2]
+    
+    # print(len(Q))
     
     for q in Q:
         T = [getframe(qq,ns) for qq in q]
@@ -397,7 +498,7 @@ while True:
                 H[t2] = set()
             H[t2].add(t1)
             if t1[0]==t2[0]:
-                print(f'??????? {t1} --> {t2}')
+                print(f'1??????? {t1} --> {t2}')
                 sys.exit()
 
 def tupsort(L, reverse=False):
@@ -413,8 +514,8 @@ def union(data, i, j):
     if pi != pj:
         t1,t2 = S[pi],S[pj]
         if t1[0]==t2[0]:
-            print(f'??????? {t1} --> {t2}')
-            sys.exit()
+            print(f'2??????? {t1} --> {t2}')
+            return
         data[pi] = pj
 
 S = tupsort(list(S), reverse=True)
@@ -430,7 +531,7 @@ for k,t1 in enumerate(S):
         print(f'{k}/{len(H)}')
     for t2 in tt:
         if t1[0]==t2[0]:
-            print(f'??????? {t1} --> {t2}')
+            print(f'3??????? {t1} --> {t2}')
             sys.exit()
         i,j = Sidx[t1],Sidx[t2]
         union(data, i, j)
@@ -466,10 +567,14 @@ for i,lf in enumerate(lab_files):
     labs = get_labels(pth+lf)
     labs = [[int(x[0])] + x[1:] for x in labs.tolist()]
     lines = []
+    nc = 0
     for j in range(len(labs)):
         t = (i,j)
         c = H[t] if t in H else -1
+        nc += (c<0)*1
         labs[j][0] = c
         lines.append(' '.join([str(x) for x in labs[j]]))
     lf2 = pth2 + lf
     write_lines(lf2, lines)
+    if i%10==0:
+        print(nc)
