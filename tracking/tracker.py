@@ -4,6 +4,7 @@ from glob import glob
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 import scipy.optimize
+import scipy as sci
 import cv2
 from PIL import Image, ImageFilter
 from matplotlib.patches import Rectangle
@@ -429,10 +430,11 @@ def dpairwise(X):
     return -2*np.dot(X, X.T) + Xn + Xn[:,None]
 
 def align2(b1, b2, iou_min=0.4, df=1):
+    # global u,N,i,j,d
     N = norm_ious(b1,b2)
     i,j,d,_ = hm(1-N)
     m = median(d,0.5)
-    z = d<m
+    z = d<=m
     i,j,d = i[z],j[z],d[z]
     c1 = (b1[i,:2]+b1[i,2:])/2
     c2 = (b2[j,:2]+b2[j,2:])/2
@@ -441,9 +443,9 @@ def align2(b1, b2, iou_min=0.4, df=1):
     s = dpairwise(v)
     u = s[np.triu_indices(len(v), k=1)]
     m = median(u,0.5)
-    g = u[u<m]
+    g = u[u<=m]
     m = g.mean()+g.std()
-    M = (s<m)*1
+    M = (s<=m)*1
     G = nx.from_numpy_matrix(M, create_using=nx.Graph)
     Q = list(nx.clique.find_cliques(G))
     lens = [len(q) for q in Q]
@@ -456,9 +458,11 @@ def align2(b1, b2, iou_min=0.4, df=1):
     i,j,d,_ = hm(D)
     u = U[i,j]
     
-    z = u>(iou_min*df)
+    z = u>(iou_min)#*df)
     # if z.mean()<zmin: z=d<median(d, quint)
     i,j = i[z],j[z]
+    
+    # ## run again ?? ############
     
     return adict({'i':i,'j':j})
     
@@ -496,10 +500,20 @@ def getframe(n,ns):
     
 ################################
 
-pth = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0001_1/component_track/labels/'
+# pth = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0001_1/component_track/labels/'
+
+# pth = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0001/component/labels/'
+pth = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0004/component/labels/'
+# pth = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0010/component/labels/'
+
 
 pth2 = pth.replace('/labels/', '/labels_track/')
 mkdirs(pth2)
+
+pth3 = pth.replace('/labels/', '/labels_smooth/')
+mkdirs(pth3)
+
+####################################################
 
 lab_files = np.array(get_filenames(pth, txt))
 idx = np.array([int(f.replace(txt,'').split('_')[-1]) for f in lab_files])
@@ -507,23 +521,20 @@ a = idx.argsort()
 lab_files, idx = lab_files[a], idx[a]
 
 ## pool size
-m1 = 10 # 10
+m1 = 12 # 10
 # min clique size
-m2 = 5  # 5
+m2 = 6  # 5
 ## step size
 step = 2
 ## iou min
 iou_min=0.3
-## normalization: 0=NO normalization, 1=minmax, 2=standardize
-norm_type=2
-
 
 
 ##############################################################
 # ## testing!!
 # i1 = np.random.randint(280)
 # i2 = i1 + 1 + np.random.randint(18)
-# # i1,i2 = 133,152
+# i1,i2 = 240,245
 
 # print(f'{i1} {i2}')
 
@@ -545,7 +556,6 @@ norm_type=2
 # # s = cosine_similarity(v)
 # s = dpairwise(v)
 # u = s[np.triu_indices(len(v), k=1)]
-# # m = min(median(u,0.5), 0.98)
 # m = median(u,0.5)
 # g = u[u<m]
 # m = g.mean()+g.std()
@@ -561,8 +571,8 @@ norm_type=2
 
 # draw2boxes(b1, b2+h, offset=0)
 
-# D,U = distmats(b1, b2+h)
-# i,j,d,_ = hm(D)
+# # D,U = distmats(b1, b2+h)
+# # i,j,d,_ = hm(D)
 
 
 # sys.exit()
@@ -591,9 +601,12 @@ while True:
     ns,bs = [],[]
     for f in F:
         fn = lab_files[f]
-        x = get_labels(pth+fn)#[:,1:5]
-        x = x[:,1:5]
-        b = xywh2xyxy(x)
+        x = get_labels(pth+fn)
+        if len(x)>0:
+            x = x[:,1:5]
+            b = xywh2xyxy(x)
+        else:
+            b = np.empty([0,4])
         bs.append(b)
         ns.append(len(b))
     ns = np.array(ns)
@@ -607,9 +620,13 @@ while True:
             if ab in P:
                 p = P[ab]
             else:
-                # p = align(bs[a], bs[b], iou_min=iou_min, norm_type=norm_type)
-                # p = align_twice(bs[a], bs[b], iou_min=iou_min, norm_type=norm_type)
-                p = align2(bs[a], bs[b], iou_min=iou_min, df=1-(F[b]-F[a]-1)/m1)
+                if ns[a]==0 or ns[b]==0:
+                    p = adict({'i':np.array([], dtype=np.int32), 'j':np.array([], dtype=np.int32)})
+                else:
+                    p = align2(bs[a], bs[b], iou_min=iou_min, df=1-(F[b]-F[a]-1)/m1)
+                    # p = align(bs[a], bs[b], iou_min=iou_min, norm_type=norm_type)
+                    # p = align_twice(bs[a], bs[b], iou_min=iou_min, norm_type=norm_type)
+
                 P[ab] = p
             
             x = p.i + ns[:a].sum()
@@ -620,8 +637,6 @@ while True:
     G = nx.from_numpy_matrix(M, create_using=nx.Graph)
     Q = list(nx.clique.find_cliques(G))
     Q = [sorted(q) for q in Q if len(q)>=m2]
-    
-    # print(len(Q))
     
     for q in Q:
         T = [getframe(qq,ns) for qq in q]
@@ -700,6 +715,7 @@ for i,k in enumerate(K):
     print(f'{i}\t{s[:3]}')
 
 
+T = {}
 for i,lf in enumerate(lab_files):
     labs = get_labels(pth+lf)
     labs = [[int(x[0])] + x[1:] for x in labs.tolist()]
@@ -711,7 +727,77 @@ for i,lf in enumerate(lab_files):
         nc += (c<0)*1
         labs[j][0] = c
         lines.append(' '.join([str(x) for x in labs[j]]))
+        if c<0: 
+            continue
+        if c not in T:
+            T[c] = {}
+        T[c][i] = labs[j][1:5]
+    
     lf2 = pth2 + lf
     write_lines(lf2, lines)
     if i%10==0:
         print(nc)
+        
+## interpolate and smooth
+def nan_helper(y):
+    """Helper to handle indices and logical indices of NaNs.
+
+    Input:
+        - y, 1d numpy array with possible NaNs
+    Output:
+        - nans, logical indices of NaNs
+        - index, a function, with signature indices= index(logical_indices),
+          to convert logical indices of NaNs to 'equivalent' indices
+    Example:
+        >>> # linear interpolation of NaNs
+        >>> nans, x= nan_helper(y)
+        >>> y[nans]= np.interp(x(nans), x(~nans), y[~nans])
+    """
+    return np.isnan(y), lambda z: z.nonzero()[0]
+
+def moving_average(a, n=3) :
+    ret = np.cumsum(a, dtype=float)
+    ret[n:] = ret[n:] - ret[:-n]
+    return ret[n - 1:] / n
+
+def rollavg_convolve_edges(a,n=5):
+    'scipy.convolve, edge handling'
+    assert n%2==1
+    return sci.convolve(a,np.ones(n,dtype='float'), 'same')/sci.convolve(np.ones(len(a)),np.ones(n), 'same')  
+
+win = 5
+
+K = list(T.keys())
+V = {}
+# T2 = {}
+for k in K:
+    R = T[k]
+    F = np.array(list(R.keys()))
+    n = F.ptp()+1
+    if n<30:
+        continue
+    f1 = F[0]
+    x = np.empty([n,4])
+    x[:] = np.nan
+    for f in F:
+        x[f-f1] = R[f]
+    for j in range(4):
+        y = x[:,j]
+        nans, z = nan_helper(y)
+        y[nans]= np.interp(z(nans), z(~nans), y[~nans])
+        yy = rollavg_convolve_edges(y, n=win)
+        x[:,j] = yy
+    # R = {}
+    for i in range(n):
+        f = i+f1
+        if f not in V:
+            V[f] = []
+        labs = f'{k} ' + ' '.join([str(e) for e in x[i].round(6)]) + ' 1'
+        V[f].append(labs)
+        # R[f] = x[i]
+    # T2[k] = R
+    
+for i,lf in enumerate(lab_files):
+    lines = V[i]
+    lf3 = pth3 + lf
+    write_lines(lf3, lines)
