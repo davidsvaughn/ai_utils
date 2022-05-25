@@ -430,7 +430,7 @@ def dpairwise(X):
     return -2*np.dot(X, X.T) + Xn + Xn[:,None]
 
 def align2(b1, b2, df=1, df_max=0.01, iou_min=0.3):
-    # global u,N,i,j,d
+    global u,v,i,j,dv,z
     N = norm_ious(b1,b2)
     i,j,d,_ = hm(1-N)
     m = median(d,0.9)
@@ -439,15 +439,19 @@ def align2(b1, b2, df=1, df_max=0.01, iou_min=0.3):
     c1 = (b1[i,:2]+b1[i,2:])/2
     c2 = (b2[j,:2]+b2[j,2:])/2
     v = c1-c2
-    #####################
+    ###############################
     dv = np.sum(v**2, axis=1)**0.5
-    # z = dv<(df_max*df)
-    for w in range(5):
+    zmin = max(min(5,len(dv)), 0.33*len(dv))
+    for w in range(10):
         z = dv<(df_max*(df+w))
-        if z.mean()>0.33:
-            break
+        if z.sum()>=zmin:
+            break 
+    if z.sum()<zmin:
+        z = dv<dv.max()
+        if z.sum()<2:
+            z = dv<(dv.max()+1)
     i,j,v = i[z],j[z],v[z]
-    #####################
+    ###############################
     # s = cosine_similarity(v)
     s = dpairwise(v)
     u = s[np.triu_indices(len(v), k=1)]
@@ -495,14 +499,15 @@ def getframe(n,ns):
 
 # root = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0001/component/'
 # root = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0004/component/'
+
 # root = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0010/component/'
 root = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0010_1/component/'
 
 pth = root + 'labels/'
 
-track_path = root + 'track/'
-pth2 = track_path + 'labels/'
-mkdirs(pth2)
+# track_path = root + 'track/'
+# pth2 = track_path + 'labels/'
+# mkdirs(pth2)
 
 smooth_path = root + 'smooth/'
 pth3 = smooth_path + 'labels/'
@@ -531,9 +536,9 @@ step = 1
 ## max displacement per frame
 df_max = 0.01
 
-m1,m2 = 10,4
-
-# m1,m2 = 12,4
+# m1,m2 = 10,4
+m1,m2 = 12,5 #********
+# m1,m2 = 13,6
 
 ##############################################################
 # ## testing!!
@@ -613,7 +618,31 @@ m1,m2 = 10,4
 # print(i)
 # print(j)
 # sys.exit()
-# #####################################################################
+###############################################################
+## find prelim stable regions
+L = []
+for i,lf in enumerate(lab_files):
+    labs = get_labels(pth+lf)
+    if len(labs.shape)<2:
+        labs = labs[:,None]
+    L.append(labs[:,0].astype(np.int32))    
+n = 1 + max([x.max() for x in L if len(x)>0])
+m = len(L)
+X = np.zeros([m, n])
+for i,x in enumerate(L):
+    y,z = np.unique(x, return_counts=True)
+    X[i,y] = z
+
+S = np.array( [cosine_similarity(X[i].reshape(1,-1), X[i-1].reshape(1,-1)).item() for i in range(1,m)])
+D = np.array( [np.dot(X[i].reshape(1,-1), X[i-1].reshape(-1,1)).item() for i in range(1,m)])
+
+plt.plot(S)
+plt.show()
+plt.plot(D)
+plt.show()
+
+sys.exit()
+#######################################################################
 
 
 seed = np.random.randint(10000)
@@ -770,11 +799,12 @@ for i,lf in enumerate(lab_files):
         if c not in T:
             T[c] = {}
         T[c][i] = labs[j][1:5]
+        
+    if i%10==0: print(nc)
+    ## write "track" label files ???
+    # lf2 = pth2 + lf
+    # write_lines(lf2, lines)
     
-    lf2 = pth2 + lf
-    write_lines(lf2, lines)
-    if i%10==0:
-        print(nc)
 
 def make_empty_file(fn):
     with open(fn, 'w') as f:
@@ -807,9 +837,8 @@ def rollavg_convolve_edges(a,n=5):
     assert n%2==1
     return sci.convolve(a,np.ones(n,dtype='float'), 'same')/sci.convolve(np.ones(len(a)),np.ones(n), 'same')  
 
-K = list(T.keys())
+K = np.array(list(T.keys()))
 V = {}
-# T2 = {}
 for k in K:
     R = T[k]
     F = np.array(list(R.keys()))
@@ -827,16 +856,13 @@ for k in K:
         y[nans]= np.interp(z(nans), z(~nans), y[~nans])
         yy = rollavg_convolve_edges(y, n=win)
         x[:,j] = yy
-    # R = {}
     for i in range(n):
         f = i+f1
         if f not in V:
             V[f] = []
         labs = f'{k} ' + ' '.join([str(e) for e in x[i].round(6)]) + ' 1'
         V[f].append(labs)
-        # R[f] = x[i]
-    # T2[k] = R
-    
+
 for i,lf in enumerate(lab_files):
     lf3 = pth3 + lf
     if i not in V:
@@ -844,3 +870,18 @@ for i,lf in enumerate(lab_files):
         continue
     lines = V[i]
     write_lines(lf3, lines)
+    
+    
+sys.exit()
+
+
+## find stable regions
+F = np.array(list(V.keys()))
+n = F.ptp() + 1
+H = np.zeros([n,K.max()+1], np.int32)
+for i in range(n):
+    if i not in V: continue
+    h = np.array([int(z.split(' ')[0]) for z in V[i]])
+    H[i,h] = 1
+    
+
