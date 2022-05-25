@@ -500,17 +500,18 @@ def getframe(n,ns):
     
 ################################
 
-# pth = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0001_1/component_track/labels/'
+# root = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0001/component/'
+# root = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0004/component/'
+root = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0010/component/'
 
-# pth = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0001/component/labels/'
-pth = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0004/component/labels/'
-# pth = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0010/component/labels/'
+pth = root + 'labels/'
 
-
-pth2 = pth.replace('/labels/', '/labels_track/')
+track_path = root + 'track/'
+pth2 = track_path + 'labels/'
 mkdirs(pth2)
 
-pth3 = pth.replace('/labels/', '/labels_smooth/')
+smooth_path = root + 'smooth/'
+pth3 = smooth_path + 'labels/'
 mkdirs(pth3)
 
 ####################################################
@@ -521,9 +522,9 @@ a = idx.argsort()
 lab_files, idx = lab_files[a], idx[a]
 
 ## pool size
-m1 = 12 # 10
+m1 = 12 # 10, 12
 # min clique size
-m2 = 6  # 5
+m2 = 7  # 5, 6
 ## step size
 step = 2
 ## iou min
@@ -620,7 +621,7 @@ while True:
             if ab in P:
                 p = P[ab]
             else:
-                if ns[a]==0 or ns[b]==0:
+                if ns[a]<2 or ns[b]<2:
                     p = adict({'i':np.array([], dtype=np.int32), 'j':np.array([], dtype=np.int32)})
                 else:
                     p = align2(bs[a], bs[b], iou_min=iou_min, df=1-(F[b]-F[a]-1)/m1)
@@ -737,6 +738,10 @@ for i,lf in enumerate(lab_files):
     write_lines(lf2, lines)
     if i%10==0:
         print(nc)
+
+def make_empty_file(fn):
+    with open(fn, 'w') as f:
+        f.write('')
         
 ## interpolate and smooth
 def nan_helper(y):
@@ -765,7 +770,7 @@ def rollavg_convolve_edges(a,n=5):
     assert n%2==1
     return sci.convolve(a,np.ones(n,dtype='float'), 'same')/sci.convolve(np.ones(len(a)),np.ones(n), 'same')  
 
-win = 5
+win = 11
 
 K = list(T.keys())
 V = {}
@@ -798,6 +803,9 @@ for k in K:
     # T2[k] = R
     
 for i,lf in enumerate(lab_files):
-    lines = V[i]
     lf3 = pth3 + lf
+    if i not in V:
+        make_empty_file(lf3)
+        continue
+    lines = V[i]
     write_lines(lf3, lines)
