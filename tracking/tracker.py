@@ -17,6 +17,8 @@ from random import shuffle as shuf
 from scipy.spatial.distance import cdist
 from shutil import copyfile
 import networkx as nx
+import torch
+from sklearn.metrics.pairwise import cosine_similarity
 
 txt,jpg,JPG = '.txt','.jpg','.JPG'
 
@@ -97,16 +99,20 @@ def normalize(A, t=2, e=0.1):
     A = A.reshape(-1,2)
     
     if e>0:
+        drawboxes(B)
         xy = (B[:,:2]+B[:,2:])/2
         idx = np.hstack([xy>e, (1-xy)>e]).all(1)
         B = B[idx]
+        drawboxes(B)
         
     B = B.reshape(-1,2)
     if t==0:
         print('NO NORMALIZATION AT ZERO!!!!!!!!')
         return 1/0
-    if abs(t)==2:
+    if abs(t)>=2:
         mu, sig = standardize(B)
+        if abs(t)==3:
+            sig = 1
     else: #abs(t)==1)
         mu, sig = minmax_normalize(B)
     if t<0: ## retain H/W ratio
@@ -125,6 +131,49 @@ def fixbox(a):
 
 def fixboxes(A):
     return np.array([fixbox(a) for a in A])
+
+def box_iou(box1, box2):
+    # https://github.com/pytorch/vision/blob/master/torchvision/ops/boxes.py
+    """
+    Return intersection-over-union (Jaccard index) of boxes.
+    Both sets of boxes are expected to be in (x1, y1, x2, y2) format.
+    Arguments:
+        box1 (Tensor[N, 4])
+        box2 (Tensor[M, 4])
+    Returns:
+        iou (Tensor[N, M]): the NxM matrix containing the pairwise
+            IoU values for every element in boxes1 and boxes2
+    """
+
+    def box_area(box):
+        # box = 4xn
+        return (box[2] - box[0]) * (box[3] - box[1])
+
+    area1 = box_area(box1.T)
+    area2 = box_area(box2.T)
+
+    # inter(N,M) = (rb(N,M,2) - lt(N,M,2)).clamp(0).prod(2)
+    inter = (torch.min(box1[:, None, 2:], box2[:, 2:]) - torch.max(box1[:, None, :2], box2[:, :2])).clamp(0).prod(2)
+    return inter / (area1[:, None] + area2 - inter)  # iou = inter / (area1 + area2 - inter)
+
+def overlap(boxes1, boxes2):
+    box1 = torch.tensor(boxes1)
+    box2 = torch.tensor(boxes2)
+    inter = (torch.min(box1[:, None, 2:], box2[:, 2:]) - torch.max(box1[:, None, :2], box2[:, :2])).clamp(0).prod(2)
+    return torch.sum(inter).numpy().item()
+
+def norm_iou(box1, box2):
+    x1 = box1 - np.hstack([box1[:2],box1[:2]])
+    x2 = box2 - np.hstack([box2[:2],box2[:2]])
+    return box_iou(x1,x2)
+
+def norm_ious(boxes1, boxes2):
+    n1,n2 = len(boxes1), len(boxes2)
+    M = np.zeros([n1,n2])
+    for i in range(n1):
+        for j in range(n2):
+            M[i,j] = norm_iou(boxes1[i], boxes2[j])
+    return M
 
 def box_iou(boxA, boxB):
     # https://www.pyimagesearch.com/2016/11/07/intersection-over-union-iou-for-object-detection/
@@ -346,7 +395,7 @@ def align(b1, b2, iou_min=0.4):
 zmin = 0.5
 quint=0.75
 
-def median(x,q):
+def median(x,q=0.5):
     i = int(q*len(x))
     return sorted(x)[i]
 
@@ -375,6 +424,69 @@ def align_twice(a1, a2, iou_min=0.4, norm_type=2):
     ############################
     return adict({'i':i,'j':j})
 
+def dpairwise(X):
+    Xn = np.sum(X**2, axis=1)
+    return -2*np.dot(X, X.T) + Xn + Xn[:,None]
+
+def align2(b1, b2, iou_min=0.4, df=1):
+    N = norm_ious(b1,b2)
+    i,j,d,_ = hm(1-N)
+    m = median(d,0.5)
+    z = d<m
+    i,j,d = i[z],j[z],d[z]
+    c1 = (b1[i,:2]+b1[i,2:])/2
+    c2 = (b2[j,:2]+b2[j,2:])/2
+    v = c1-c2
+    # s = cosine_similarity(v)
+    s = dpairwise(v)
+    u = s[np.triu_indices(len(v), k=1)]
+    m = median(u,0.5)
+    g = u[u<m]
+    m = g.mean()+g.std()
+    M = (s<m)*1
+    G = nx.from_numpy_matrix(M, create_using=nx.Graph)
+    Q = list(nx.clique.find_cliques(G))
+    lens = [len(q) for q in Q]
+    q = np.array(Q[np.argmax(lens)])
+    ## b2 offset
+    h = v[q].mean(0)
+    h = np.hstack([h,h])
+    # draw2boxes(b1, b2+h, offset=0)
+    D,U = distmats(b1, b2+h)
+    i,j,d,_ = hm(D)
+    u = U[i,j]
+    
+    z = u>(iou_min*df)
+    # if z.mean()<zmin: z=d<median(d, quint)
+    i,j = i[z],j[z]
+    
+    return adict({'i':i,'j':j})
+    
+    
+    # ########################################
+    # # global d,u
+    # D,U = distmats(a1, a2)#, t=norm_type)    
+    # i,j,d,_ = hm(D)
+    # u = U[i,j]
+    # # if d.ptp()>0.01: sys.exit()
+    
+    # z = u>(0 if norm_type>0 else iou_min)
+    # if z.mean()<zmin: z=d<median(d, quint)#d.mean()# + d.std()
+    
+    # i,j = i[z],j[z]
+    # ## run again ?? ############
+    # if norm_type>0:
+    #     b1,b2 = a1[i],a2[j]
+    #     D,U = distmats(b1, b2, t=norm_type)
+    #     ii,jj,d,_ = hm(D)
+    #     u = U[ii,jj]
+    #     z = u>iou_min
+    #     if z.mean()<zmin: z=d<median(d, quint)# d < d.mean()# + d.std()
+    #     ii,jj = ii[z],jj[z]
+    #     i,j = i[ii],j[jj]
+    # ############################
+    # return adict({'i':i,'j':j})
+
 def getframe(n,ns):
     for i in range(len(ns)):
         if n < ns[i]:
@@ -395,9 +507,9 @@ a = idx.argsort()
 lab_files, idx = lab_files[a], idx[a]
 
 ## pool size
-m1 = 10
+m1 = 10 # 10
 # min clique size
-m2 = 5
+m2 = 5  # 5
 ## step size
 step = 2
 ## iou min
@@ -409,24 +521,49 @@ norm_type=2
 
 ##############################################################
 # ## testing!!
-# i1,i2 = 160,170
+# i1 = np.random.randint(280)
+# i2 = i1 + 1 + np.random.randint(18)
+# # i1,i2 = 133,152
+
+# print(f'{i1} {i2}')
+
 # x1 = get_labels(pth+lab_files[i1])[:,1:5]
 # x2 = get_labels(pth+lab_files[i2])[:,1:5]
 # b1 = xywh2xyxy(x1)
 # b2 = xywh2xyxy(x2)
-# draw2boxes(b1,b2)
+# draw2boxes(b1,b2,offset=0.1)
+# # D,U = distmats(b1, b2)
+    
+# N = norm_ious(b1,b2)
+# i,j,d,_ = hm(1-N)
+# m = median(d,0.5)
+# z = d<m
+# i,j,d = i[z],j[z],d[z]
+# c1 = (b1[i,:2]+b1[i,2:])/2
+# c2 = (b2[j,:2]+b2[j,2:])/2
+# v = c1-c2
+# # s = cosine_similarity(v)
+# s = dpairwise(v)
+# u = s[np.triu_indices(len(v), k=1)]
+# # m = min(median(u,0.5), 0.98)
+# m = median(u,0.5)
+# g = u[u<m]
+# m = g.mean()+g.std()
 
-# # e = 0.1
-# # idx1 = np.hstack([x1[:,:2]>e, (1-x1[:,:2])>e]).all(1)
-# # idx2 = np.hstack([x2[:,:2]>e, (1-x2[:,:2])>e]).all(1)
-# # b1,b2 = b1[idx1], b2[idx2]
-# # draw2boxes(b1,b2)
+# M = (s<m)*1
+# G = nx.from_numpy_matrix(M, create_using=nx.Graph)
+# Q = list(nx.clique.find_cliques(G))
+# lens = [len(q) for q in Q]
+# q = np.array(Q[np.argmax(lens)])
 
-# a1,a2 = normalize(b1, t=2), normalize(b2, t=2)
-# draw2boxes(a1,a2)
+# h = v[q].mean(0)
+# h = np.hstack([h,h])
 
-# D,U = distmats(a1, a2)
-# # draw2boxes(a1,a2)
+# draw2boxes(b1, b2+h, offset=0)
+
+# D,U = distmats(b1, b2+h)
+# i,j,d,_ = hm(D)
+
 
 # sys.exit()
 # #####################################################################
@@ -438,7 +575,7 @@ seed = 1234
 np.random.seed(seed)
 
 s = -step
-H,S = {},set()
+H,P,S = {},{},set()
 while True:
     s += step
     if s+m1 > len(lab_files):
@@ -455,12 +592,6 @@ while True:
     for f in F:
         fn = lab_files[f]
         x = get_labels(pth+fn)#[:,1:5]
-        ###############
-        ## confidence filter?
-        # conf = x[:,-1]
-        # idx = conf>0.25
-        # x = x[idx]
-        ###############
         x = x[:,1:5]
         b = xywh2xyxy(x)
         bs.append(b)
@@ -472,8 +603,14 @@ while True:
     for a in range(len(bs)):
         for b in range(a+1,len(bs)):
             
-            # p = align(bs[a], bs[b], iou_min=iou_min, norm_type=norm_type)
-            p = align_twice(bs[a], bs[b], iou_min=iou_min, norm_type=norm_type)
+            ab = (F[a],F[b])
+            if ab in P:
+                p = P[ab]
+            else:
+                # p = align(bs[a], bs[b], iou_min=iou_min, norm_type=norm_type)
+                # p = align_twice(bs[a], bs[b], iou_min=iou_min, norm_type=norm_type)
+                p = align2(bs[a], bs[b], iou_min=iou_min, df=1-(F[b]-F[a]-1)/m1)
+                P[ab] = p
             
             x = p.i + ns[:a].sum()
             y = p.j + ns[:b].sum()
