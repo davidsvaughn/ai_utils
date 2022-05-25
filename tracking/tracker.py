@@ -790,14 +790,14 @@ T = {}
 for i,lf in enumerate(lab_files):
     labs = get_labels(pth+lf)
     labs = [[int(x[0])] + x[1:] for x in labs.tolist()]
-    lines = []
+    # lines = []
     nc = 0
     for j in range(len(labs)):
         t = (i,j)
         c = H[t] if t in H else -1
         nc += (c<0)*1
-        labs[j][0] = c
-        lines.append(' '.join([str(x) for x in labs[j]]))
+        # labs[j][0] = c
+        # lines.append(' '.join([str(x) for x in labs[j]]))
         if c<0: 
             continue
         if c not in T:
@@ -858,10 +858,8 @@ for k in K:
     ## pick most frequent class
     y = x[:,0]
     nans, z = nan_helper(y)
-    if nans.sum()>0:
-        break
     c = np.bincount(y[~nans].astype(np.int32)).argmax()
-    y[nans] = c
+    y[:] = c
     x[:,0] = y
     ## smooth boxes
     for j in range(1,5):
