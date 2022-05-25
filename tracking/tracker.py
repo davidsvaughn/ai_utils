@@ -618,30 +618,34 @@ m1,m2 = 12,5 #********
 # print(i)
 # print(j)
 # sys.exit()
+
+
+
+
 ###############################################################
 ## find prelim stable regions
-L = []
-for i,lf in enumerate(lab_files):
-    labs = get_labels(pth+lf)
-    if len(labs.shape)<2:
-        labs = labs[:,None]
-    L.append(labs[:,0].astype(np.int32))    
-n = 1 + max([x.max() for x in L if len(x)>0])
-m = len(L)
-X = np.zeros([m, n])
-for i,x in enumerate(L):
-    y,z = np.unique(x, return_counts=True)
-    X[i,y] = z
+# L = []
+# for i,lf in enumerate(lab_files):
+#     labs = get_labels(pth+lf)
+#     if len(labs.shape)<2:
+#         labs = labs[:,None]
+#     L.append(labs[:,0].astype(np.int32))    
+# n = 1 + max([x.max() for x in L if len(x)>0])
+# m = len(L)
+# X = np.zeros([m, n])
+# for i,x in enumerate(L):
+#     y,z = np.unique(x, return_counts=True)
+#     X[i,y] = z
 
-S = np.array( [cosine_similarity(X[i].reshape(1,-1), X[i-1].reshape(1,-1)).item() for i in range(1,m)])
-D = np.array( [np.dot(X[i].reshape(1,-1), X[i-1].reshape(-1,1)).item() for i in range(1,m)])
+# S = np.array( [cosine_similarity(X[i].reshape(1,-1), X[i-1].reshape(1,-1)).item() for i in range(1,m)])
+# D = np.array( [np.dot(X[i].reshape(1,-1), X[i-1].reshape(-1,1)).item() for i in range(1,m)])
 
-plt.plot(S)
-plt.show()
-plt.plot(D)
-plt.show()
+# plt.plot(S)
+# plt.show()
+# plt.plot(D)
+# plt.show()
 
-sys.exit()
+# sys.exit()
 #######################################################################
 
 
@@ -798,7 +802,7 @@ for i,lf in enumerate(lab_files):
             continue
         if c not in T:
             T[c] = {}
-        T[c][i] = labs[j][1:5]
+        T[c][i] = labs[j][:5]
         
     if i%10==0: print(nc)
     ## write "track" label files ???
@@ -846,11 +850,21 @@ for k in K:
     if n<30:
         continue
     f1 = F[0]
-    x = np.empty([n,4])
+    x = np.empty([n,5])
     x[:] = np.nan
     for f in F:
-        x[f-f1] = R[f]
-    for j in range(4):
+        r = R[f]
+        x[f-f1] = r[:5]
+    ## pick most frequent class
+    y = x[:,0]
+    nans, z = nan_helper(y)
+    if nans.sum()>0:
+        break
+    c = np.bincount(y[~nans].astype(np.int32)).argmax()
+    y[nans] = c
+    x[:,0] = y
+    ## smooth boxes
+    for j in range(1,5):
         y = x[:,j]
         nans, z = nan_helper(y)
         y[nans]= np.interp(z(nans), z(~nans), y[~nans])
@@ -860,9 +874,11 @@ for k in K:
         f = i+f1
         if f not in V:
             V[f] = []
-        labs = f'{k} ' + ' '.join([str(e) for e in x[i].round(6)]) + ' 1'
+        # labs = f'{k} ' + ' '.join([str(e) for e in x[i].round(6)]) + ' 1'
+        labs = f'{int(x[i,0])} ' + ' '.join([str(e) for e in x[i,1:5].round(6)]) + f' {k}'
         V[f].append(labs)
 
+## save to new label files
 for i,lf in enumerate(lab_files):
     lf3 = pth3 + lf
     if i not in V:
