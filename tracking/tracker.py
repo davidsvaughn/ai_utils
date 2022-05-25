@@ -301,7 +301,7 @@ def corner4dist(b1, b2):
     msd = np.sum((b1-b2)**2,1).mean() ## mean square distance
     #######
     # msd = (np.sum((b1-b2)**2,1)**0.5).mean()
-    # msd = np.sqrt(msd) ## root mean square distance
+    msd = np.sqrt(msd) ## root mean square distance
     #######
     return msd
 
@@ -429,22 +429,33 @@ def dpairwise(X):
     Xn = np.sum(X**2, axis=1)
     return -2*np.dot(X, X.T) + Xn + Xn[:,None]
 
-def align2(b1, b2, iou_min=0.4, df=1):
+def align2(b1, b2, df=1, df_max=0.01, iou_min=0.3):
     # global u,N,i,j,d
     N = norm_ious(b1,b2)
     i,j,d,_ = hm(1-N)
-    m = median(d,0.5)
+    m = median(d,0.9)
     z = d<=m
     i,j,d = i[z],j[z],d[z]
     c1 = (b1[i,:2]+b1[i,2:])/2
     c2 = (b2[j,:2]+b2[j,2:])/2
     v = c1-c2
+    #####################
+    dv = np.sum(v**2, axis=1)**0.5
+    # z = dv<(df_max*df)
+    for w in range(5):
+        z = dv<(df_max*(df+w))
+        if z.mean()>0.33:
+            break
+    i,j,v = i[z],j[z],v[z]
+    #####################
     # s = cosine_similarity(v)
     s = dpairwise(v)
     u = s[np.triu_indices(len(v), k=1)]
-    m = median(u,0.5)
-    g = u[u<=m]
-    m = g.mean()+g.std()
+    m = median(u,0.66) if len(u)>5 else u.max()
+    #####
+    # g = u[u<=m]
+    # m = g.mean()+g.std()
+    #####
     M = (s<=m)*1
     G = nx.from_numpy_matrix(M, create_using=nx.Graph)
     Q = list(nx.clique.find_cliques(G))
@@ -456,40 +467,22 @@ def align2(b1, b2, iou_min=0.4, df=1):
     # draw2boxes(b1, b2+h, offset=0)
     D,U = distmats(b1, b2+h)
     i,j,d,_ = hm(D)
-    u = U[i,j]
-    
-    z = u>(iou_min)#*df)
-    # if z.mean()<zmin: z=d<median(d, quint)
+    #####################
+    z = d<d.mean()+2*d.std()
     i,j = i[z],j[z]
-    
-    # ## run again ?? ############
-    
-    return adict({'i':i,'j':j})
-    
-    
-    # ########################################
-    # # global d,u
-    # D,U = distmats(a1, a2)#, t=norm_type)    
-    # i,j,d,_ = hm(D)
-    # u = U[i,j]
-    # # if d.ptp()>0.01: sys.exit()
-    
-    # z = u>(0 if norm_type>0 else iou_min)
-    # if z.mean()<zmin: z=d<median(d, quint)#d.mean()# + d.std()
-    
+    ##### OR ############
+    # dh = np.sum(h[:2]**2)**0.5
+    # z = d < dh*.75
     # i,j = i[z],j[z]
-    # ## run again ?? ############
-    # if norm_type>0:
-    #     b1,b2 = a1[i],a2[j]
-    #     D,U = distmats(b1, b2, t=norm_type)
-    #     ii,jj,d,_ = hm(D)
-    #     u = U[ii,jj]
-    #     z = u>iou_min
-    #     if z.mean()<zmin: z=d<median(d, quint)# d < d.mean()# + d.std()
-    #     ii,jj = ii[z],jj[z]
-    #     i,j = i[ii],j[jj]
-    # ############################
-    # return adict({'i':i,'j':j})
+    ##### OR ############
+    # u = U[i,j]
+    # z = u>(iou_min)
+    # i,j = i[z],j[z]
+    #####################
+    # ## run again ??
+    #####################
+    return adict({'i':i,'j':j})
+
 
 def getframe(n,ns):
     for i in range(len(ns)):
@@ -502,7 +495,8 @@ def getframe(n,ns):
 
 # root = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0001/component/'
 # root = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0004/component/'
-root = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0010/component/'
+# root = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0010/component/'
+root = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0010_1/component/'
 
 pth = root + 'labels/'
 
@@ -521,21 +515,34 @@ idx = np.array([int(f.replace(txt,'').split('_')[-1]) for f in lab_files])
 a = idx.argsort()
 lab_files, idx = lab_files[a], idx[a]
 
-## pool size
-m1 = 12 # 10, 12
-# min clique size
-m2 = 7  # 5, 6
-## step size
-step = 2
 ## iou min
 iou_min=0.3
+## smoothing window
+win = 11
 
+
+# ## pool size
+# m1 = 10 # 10, 12
+# # min clique size
+# m2 = 4  # 5, 6
+
+## step size
+step = 1
+## max displacement per frame
+df_max = 0.01
+
+m1,m2 = 10,4
+
+# m1,m2 = 12,4
 
 ##############################################################
 # ## testing!!
 # i1 = np.random.randint(280)
 # i2 = i1 + 1 + np.random.randint(18)
-# i1,i2 = 240,245
+
+# # i1,i2 = 1,3
+# i1,i2 = 126,137
+# # i2 = i1 + 1 + np.random.randint(12)
 
 # print(f'{i1} {i2}')
 
@@ -548,18 +555,31 @@ iou_min=0.3
     
 # N = norm_ious(b1,b2)
 # i,j,d,_ = hm(1-N)
-# m = median(d,0.5)
+# m = median(d,0.9)
 # z = d<m
 # i,j,d = i[z],j[z],d[z]
 # c1 = (b1[i,:2]+b1[i,2:])/2
 # c2 = (b2[j,:2]+b2[j,2:])/2
 # v = c1-c2
+# #########
+# dv = np.sum(v**2, axis=1)**0.5
+# # z = dv<(df_max*(i2-i1))
+# for w in range(5):
+#     z = dv<(df_max*(i2-i1+w))
+#     if z.mean()>0.33:
+#         break
+# # sys.exit()
+# i,j,v = i[z],j[z],v[z]
+# #########
 # # s = cosine_similarity(v)
 # s = dpairwise(v)
 # u = s[np.triu_indices(len(v), k=1)]
-# m = median(u,0.5)
-# g = u[u<m]
-# m = g.mean()+g.std()
+# m = median(u,0.66) if len(u)>5 else u.max()
+
+# #############
+# # g = u[u<m]
+# # m = g.mean()+g.std()
+# #############
 
 # M = (s<m)*1
 # G = nx.from_numpy_matrix(M, create_using=nx.Graph)
@@ -572,16 +592,32 @@ iou_min=0.3
 
 # draw2boxes(b1, b2+h, offset=0)
 
-# # D,U = distmats(b1, b2+h)
-# # i,j,d,_ = hm(D)
+# D,U = distmats(b1, b2+h)
+# i,j,d,_ = hm(D)
+# print(i)
+# print(j)
+# print(d)
+
+# z = d<d.mean()+d.std()
+# i,j = i[z],j[z]
+
+# # dh = np.sum(h[:2]**2)**0.5
+# # z = d < dh*.75
+# # i,j = i[z],j[z]
+
+# # u = U[i,j]
+# # z = u>(iou_min)
+# # i,j = i[z],j[z]
 
 
+# print(i)
+# print(j)
 # sys.exit()
 # #####################################################################
 
 
-# seed = np.random.randint(10000)
-seed = 1234
+seed = np.random.randint(10000)
+# seed = 1234
 # print(f'seed = {seed}')
 np.random.seed(seed)
 
@@ -617,14 +653,15 @@ while True:
     for a in range(len(bs)):
         for b in range(a+1,len(bs)):
             
-            ab = (F[a],F[b])
+            fa,fb = F[a],F[b]
+            ab = (fa,fb)
             if ab in P:
                 p = P[ab]
             else:
                 if ns[a]<2 or ns[b]<2:
                     p = adict({'i':np.array([], dtype=np.int32), 'j':np.array([], dtype=np.int32)})
                 else:
-                    p = align2(bs[a], bs[b], iou_min=iou_min, df=1-(F[b]-F[a]-1)/m1)
+                    p = align2(bs[a], bs[b], df=fb-fa, df_max=df_max, iou_min=iou_min)
                     # p = align(bs[a], bs[b], iou_min=iou_min, norm_type=norm_type)
                     # p = align_twice(bs[a], bs[b], iou_min=iou_min, norm_type=norm_type)
 
@@ -769,8 +806,6 @@ def rollavg_convolve_edges(a,n=5):
     'scipy.convolve, edge handling'
     assert n%2==1
     return sci.convolve(a,np.ones(n,dtype='float'), 'same')/sci.convolve(np.ones(len(a)),np.ones(n), 'same')  
-
-win = 11
 
 K = list(T.keys())
 V = {}
