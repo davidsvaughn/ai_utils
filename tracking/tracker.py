@@ -498,10 +498,12 @@ def getframe(n,ns):
 ################################
 
 # root = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0001/component/'
+root = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0001_1/component/' # m1,m2 = 12,7
+
 # root = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0004/component/'
 
 # root = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0010/component/'
-root = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0010_1/component/'
+# root = '/home/david/code/phawk/data/generic/distribution/data/detect/DJI_0010_1/component/' # m1,m2 = 12,5 #********
 
 pth = root + 'labels/'
 
@@ -534,11 +536,14 @@ win = 11
 ## step size
 step = 1
 ## max displacement per frame
-df_max = 0.01
+# df_max = 0.01 #***********
+df_max = 0.005
 
-# m1,m2 = 10,4
-m1,m2 = 12,5 #********
-# m1,m2 = 13,6
+
+# m1,m2 = 12,5 #********
+m1,m2 = 14,7
+# m1,m2 = 13,7
+
 
 ##############################################################
 # ## testing!!
