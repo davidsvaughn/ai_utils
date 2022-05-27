@@ -46,13 +46,13 @@ It will arrange the files in the same structure as 'training_start.py' script in
 # MODEL_BUCKET    = 's3://ai-labeling/transmission/manifests/extracted_from_image_filenames/'
 # DOWNLOAD_TRAIN  = True
 
-########################################################3
+########################################################
 ## Transmission ##
 
-# Transmission Master
-DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/rgb/master'
-MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/rgb/master/model/model5'
-MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/transmission-master-3008-5a/'
+# # Transmission Master
+# DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/rgb/master'
+# MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/rgb/master/model/model5'
+# MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/transmission-master-3008-5a/'
 
 ## Insulator Damage
 # DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/damage/insulator_damage'
@@ -69,7 +69,12 @@ MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/
 # MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/thermal/models/pseudo1'
 # MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/transmission-pseudo-thermal-1/'
 
-########################################################3
+# Transmission Master
+DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/thermal'
+MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/thermal/models/model1'
+MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/transmission-thermal-test1/'
+
+########################################################
 ## Solar ##
 
 ## Pseudo-Thermal
@@ -84,8 +89,8 @@ MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/
 
 #-----------------------------------------------
 IMG_DIR = '{}/images'.format(DATA_DIR)
-# LAB_DIR = '{}/labels'.format(DATA_DIR)
-LAB_DIR = '{}/labels'.format(MODEL_DIR)
+LAB_DIR = '{}/labels'.format(DATA_DIR)
+# LAB_DIR = '{}/labels'.format(MODEL_DIR)
 
 if MODEL_BUCKET:
     MANIFEST_URL    = MODEL_BUCKET + 'manifest.txt'
