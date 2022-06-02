@@ -45,10 +45,10 @@ AUTO = 'AUTO-LABELLED'
 DONE = 'DONE'
 
 # SRC_STATUS = None
-SRC_STATUS = PROG
+SRC_STATUS = NEW
 # SRC_STATUS = [DONE, PROG, REV] 
 
-DST_STATUS = DONE
+DST_STATUS = SKIP
 # DST_STATUS = DONE
 
 # LAB_ID1 = 'ef970fc5-a315-4a46-9458-8554913581c9' # Fuse_Switch_Porcelain
@@ -57,6 +57,10 @@ DST_STATUS = DONE
 def image_has_label(image, lab_id):
     labels = image.get_labels()
     return np.any([lab.class_id==lab_id for lab in labels])
+
+def image_has_labels(image):
+    labels = image.get_labels()
+    return len(labels)>0
 
 # Retrieve the list of projects images
 images = list(proj.get_images(image_status=SRC_STATUS))
@@ -69,6 +73,9 @@ for i,image in enumerate(images):
     
     # if image_has_label(image, LAB_ID1) or image_has_label(image, LAB_ID2):
     # if image.name.startswith('Davey_DJI_0_'):
+        
+    if image_has_labels(image):
+        continue
         
     image.set_status(DST_STATUS)
     j += 1

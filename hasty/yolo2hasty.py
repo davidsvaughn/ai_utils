@@ -10,22 +10,22 @@ from glob import glob
 
 # location of YOLO annotation info.... set these values appropriately....
 
-data_root = '/home/david/code/phawk/data/solar/thermal/damage/'
-yolo_classes_file = data_root + 'classes.txt'
-directory_labels  = data_root + 'labels'
-directory_images  = data_root + 'images'
-project_name = 'Solar Thermal Damage'       ## name of hasty.ai project being imported into...
-output_file = 'std_import_1.json'    ## json output file name
-
-
-# data_root = '/home/david/code/phawk/data/generic/transmission/thermal/'
+# data_root = '/home/david/code/phawk/data/solar/thermal/damage/'
 # yolo_classes_file = data_root + 'classes.txt'
-# # directory_labels  = data_root + 'labels'
-# directory_labels  = '/home/david/code/phawk/data/generic/transmission/thermal/detect/pseudo2/labels'
+# directory_labels  = data_root + 'labels'
 # directory_images  = data_root + 'images'
-# # directory_images  = '/home/david/code/phawk/data/generic/transmission/nisource/images'
-# project_name = 'Transmission Thermal'       ## name of hasty.ai project being imported into...
-# output_file = 'trans_therm_import_2.json'    ## json output file name
+# project_name = 'Solar Thermal Damage'       ## name of hasty.ai project being imported into...
+# output_file = 'std_import_1.json'    ## json output file name
+
+
+data_root = '/home/david/code/phawk/data/generic/transmission/rgb/master/model/model5/'
+yolo_classes_file = data_root + 'classes.txt'
+# directory_labels  = data_root + 'labels'
+directory_labels  = '/home/david/code/phawk/data/generic/transmission/rgb/master/model/model5/detect/new/labels'
+directory_images  = '/home/david/code/phawk/data/generic/transmission/rgb/master/images'
+# directory_images  = '/home/david/code/phawk/data/generic/transmission/nisource/images'
+project_name = 'Transmission RGB'       ## name of hasty.ai project being imported into...
+output_file = 'trans_rgb_import_2.json'    ## json output file name
 
 
 ###############################################################################
@@ -73,11 +73,18 @@ json_data['label_classes'] = label_classes
 # loop over images/labels
 json_data['images'] = []
 file_number = 0
+
 img_files = get_filenames(directory_images)
-for filename in img_files:
-    file_number = file_number+1
+lab_files = get_filenames(directory_labels, txt)
+
+
+# for filename in img_files: ### LOOP OVER IMAGES
+#     img_path = (os.path.join(directory_images, filename))
     
-    img_path = (os.path.join(directory_images, filename))
+for filename in lab_files: ### LOOP OVER LABELS
+    img_path = (os.path.join(directory_images, filename.replace(txt, jpg)))
+    
+    file_number = file_number+1
     base = os.path.basename(img_path)
     file_name_without_ext = os.path.splitext(base)[0] # name of the file without the extension
     yolo_annotation_path  = os.path.join(directory_labels, file_name_without_ext+ "." + 'txt')

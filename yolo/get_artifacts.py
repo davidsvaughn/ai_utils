@@ -54,6 +54,11 @@ It will arrange the files in the same structure as 'training_start.py' script in
 # MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/rgb/master/model/model5'
 # MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/transmission-master-3008-5a/'
 
+# Transmission Edge-Small
+DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/rgb/master'
+MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/rgb/master/model/small2'
+MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/transmission-small-720-b/'
+
 ## Insulator Damage
 # DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/damage/insulator_damage'
 # MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/damage/insulator_damage/models/model1'
@@ -69,10 +74,11 @@ It will arrange the files in the same structure as 'training_start.py' script in
 # MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/thermal/models/pseudo1'
 # MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/transmission-pseudo-thermal-1/'
 
-# Transmission Master
-DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/thermal'
-MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/thermal/models/model1'
-MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/transmission-thermal-test1/'
+# Transmission Thermal
+# DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/thermal'
+# MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/thermal/models/model1'
+# MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/transmission-thermal-test1/'
+
 
 ########################################################
 ## Solar ##
