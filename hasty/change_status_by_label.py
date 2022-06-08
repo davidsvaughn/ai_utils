@@ -31,7 +31,13 @@ print(h.get_workspaces())
 print(h.get_projects())
 
 # Get project by id
-pid = 'e7d489a2-a79f-46a6-b285-4df46238ff21'
+# pid = 'ad88c3e7-aad2-4e2f-a0c3-e78c38845c6f' ## Solar Construction
+# pid = 'ac8d612c-da2f-49d6-964e-9d3149d25ff3' ## Solar Construction 2
+# pid = 'a55dadc8-1808-47a6-9ba5-dad69723efe5' ## Transmission Master
+# pid = '2da96c3c-0bd6-429b-8076-e5aa53ba7940' ## Insulator Damage
+pid = 'bb5e2e2d-0645-4b91-9f19-9e34b0645e4b' ## Wood Damage
+# pid = 'bf104acc-44f9-4103-9379-c4096e570f6c' ## Solar Thermal Damage
+
 proj = h.get_project(pid)
 print(proj)
 
@@ -49,18 +55,20 @@ def filter_labels(image, label_ids):
     labels = image.get_labels()
     return [lab for lab in labels if lab.class_id in label_ids]
 
-ID1 = 'ef970fc5-a315-4a46-9458-8554913581c9' # Fuse_Switch_Porcelain
-ID2 = 'e4904f99-3e70-451e-aa98-c9e7489ff97a' # Fuse_Switch_Polymer
-ID3 = 'cb88e25d-9d38-4c53-87f7-60a87cf69322' # Porcelain_Dead-end_Insulator
-ID4 = 'dac2a2d8-a9ae-42e4-a6e3-3bd9c6e55207' # Porcelain_Insulator
-ID5 = '6ef2859e-e08c-4693-ac16-eb2248c9deb0' # Surge_Arrester
+ID1 = '6fb4a67b-498b-4d7f-b77a-c267eb699359' # Crack
 
-LABEL_IDS = [ID3, ID4]
+LABEL_IDS = [ID1]
 
 ## Status types are....
-## 'NEW', 'DONE', 'SKIPPED', 'IN PROGRESS', 'TO REVIEW', 'AUTO-LABELLED'
-SRC_STATUS = 'NEW' 
-DST_STATUS = 'IN PROGRESS'
+NEW  = 'NEW'
+SKIP = 'SKIPPED'
+PROG = 'IN PROGRESS'
+REV  = 'TO REVIEW'
+AUTO = 'AUTO-LABELLED'
+DONE = 'DONE'
+
+SRC_STATUS = DONE
+DST_STATUS = PROG
 
 # Retrieve the list of projects images
 images = list(proj.get_images(image_status=SRC_STATUS))

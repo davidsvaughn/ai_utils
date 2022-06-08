@@ -1,3 +1,7 @@
+'''
+Video Object Alignment and Tracking
+'''
+
 import os,sys,ntpath
 import numpy as np
 from glob import glob
@@ -8,8 +12,14 @@ import cv2
 from shutil import copyfile
 import networkx as nx
 import open3d as o3d
-import argparse 
+from pathlib import Path
+import re
+import argparse
 
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning) 
+## voat.py:172: DeprecationWarning: scipy.convolve is deprecated and will be removed in SciPy 2.0.0, 
+## use numpy.convolve instead
 
 txt,jpg,JPG = '.txt','.jpg','.JPG'
 
@@ -53,14 +63,33 @@ def get_filenames(path, ext=jpg, noext=False):
     return x
 
 def get_labels(fn):
-    with open(fn, 'r') as f:
-        lines = f.readlines()
+    try:
+        with open(fn, 'r') as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        return np.array([])
     labs = np.array( [np.array(line.strip().split(' ')).astype(float).round(6) for line in lines])
     if len(labs)==0:
         return labs#.tolist()
     labs[:,1:] = labs[:,1:].clip(0,1)
     # labs = [[int(x[0])] + x[1:] for x in labs.tolist()]
     return labs
+
+def increment_path(path, exist_ok=False, sep='_', mkdir=True):
+    # Increment file or directory path, i.e. runs/exp --> runs/exp{sep}2, runs/exp{sep}3, ... etc.
+    path = Path(path)  # os-agnostic
+    if path.exists() and not exist_ok:
+        suffix = path.suffix
+        path = path.with_suffix('')
+        dirs = glob(f"{path}{sep}*")  # similar paths
+        matches = [re.search(rf"%s{sep}(\d+)" % path.stem, d) for d in dirs]
+        i = [int(m.groups()[0]) for m in matches if m]  # indices
+        n = max(i) + 1 if i else 2  # increment number
+        path = Path(f"{path}{sep}{n}{suffix}")  # update path
+    dir = path if path.suffix == '' else path.parent  # directory
+    if not dir.exists() and mkdir:
+        dir.mkdir(parents=True, exist_ok=True)  # make directory
+    return path
 
 class Colors:
     # Ultralytics color palette https://ultralytics.com/
@@ -315,13 +344,13 @@ def find_transform(imf1, imf2, lf1, lf2, verbose=0):
             edges1 = cv2.Canny(image=img1_gray, threshold1=t1, threshold2=t2)
             if np.sum(edges1>0) < canny_thres:
                 break
-        if verbose>1:
+        if verbose>2:
             print(f't1={t1} t2={t2}')
     
     edges1 = cv2.Canny(image=img1_gray, threshold1=t1, threshold2=t2)
     edges2 = cv2.Canny(image=img2_gray, threshold1=t1, threshold2=t2)
     
-    if verbose>1:
+    if verbose>2:
         plt.imshow(edges1, cmap='gray'); plt.title(1); plt.show()
         plt.imshow(edges2, cmap='gray'); plt.title(2); plt.show()
     
@@ -351,7 +380,7 @@ def find_transform(imf1, imf2, lf1, lf2, verbose=0):
     x4,y4 = x4.clip(0,w-1), y4.clip(0,h-1)
     edges4 = edges1*0
     edges4[y4,x4] = 255
-    if verbose>1:
+    if verbose>2:
         plt.imshow(edges4, cmap='gray'); plt.title('T(1)'); plt.show()
         
     return T
@@ -365,7 +394,7 @@ def _get_transform(imf1, imf2, lab_path, trans_path, verbose=0):
     n2 = int(f2.replace(jpg,'').split('_')[-1])
     t_file = os.path.join(trans_path, f'T_{n1}_{n2}.npy')
     
-    if verbose>1:
+    if verbose>3:
         print(t_file)
     
     if os.path.exists(t_file):
@@ -502,19 +531,23 @@ def dual_binary_search(func, kwargs, k, v, eps, order, depth=0, best_n=0, best_T
     return dual_binary_search(func, kwargs, k, v, eps, order, depth+1, best_n, best_T, min_depth, max_depth)
 
 
-def track_objects(span, conn, start_frame, stop_frame, root, step=1, verbose=0):
+def track_objects(span, conn, 
+                  start_frame, 
+                  end_frame,
+                  frame_path,
+                  label_path,
+                  trans_path,
+                  step=1, 
+                  verbose=0):
+    
     ## default internal param settings
     loop_max = 0
     # max_offset,min_span = 0.05, 8
     max_offset,min_span = 0.06, 10
     
-    frame_path = root + 'frames/'
-    label_path = root + 'labels/'
-    trans_path = root + 'trans/'
-    
     label_files = np.array(get_filenames(label_path, txt))
     label_files, frames = sort_by_frame(label_files)
-    idx = (start_frame<=frames) & (frames<stop_frame)
+    idx = (start_frame<=frames) & (frames<end_frame)
     label_files = label_files[idx]
     
     H,P,S,s = {},{},set(),-step
@@ -523,7 +556,7 @@ def track_objects(span, conn, start_frame, stop_frame, root, step=1, verbose=0):
         
         if s+span > len(label_files):
             break
-        if s%50==0 and verbose>0:
+        if s % 100 == 0 and verbose>0:
             print(f'{s}/{len(label_files)}')
     
         F = np.arange(s,s+span)
@@ -553,7 +586,7 @@ def track_objects(span, conn, start_frame, stop_frame, root, step=1, verbose=0):
                 xy_offset += xy
                 offset = np.sum(xy_offset**2)**0.5
                 if offset>max_offset and len(ns)>=min_span:
-                    if verbose>0: print(len(ns))
+                    if verbose>0: print(f'reducing span to: {len(ns)}')
                     break
             #####
         #####
@@ -669,7 +702,7 @@ def track_objects(span, conn, start_frame, stop_frame, root, step=1, verbose=0):
             if c not in T:
                 T[c] = {}
             T[c][i] = labs[j][:5]
-        if i % 50 == 0 and verbose>0:
+        if i % 50 == 0 and verbose>1:
             print(nc)
             
     return len(K),T
@@ -678,7 +711,7 @@ def track_objects(span, conn, start_frame, stop_frame, root, step=1, verbose=0):
 ## interpolate and smooth
 def smooth_labels(T, win=11, min_span=60):
     K = np.array(list(T.keys()))
-    V = {}
+    U,V = {},{}
     for k in K:
         R = T[k]
         F = np.array(list(R.keys()))
@@ -708,17 +741,34 @@ def smooth_labels(T, win=11, min_span=60):
             f = i+f1
             if f not in V:
                 V[f] = []
-            V[f].append(x[i])
-    return V
+                U[f] = []
+            V[f].append(x[i]) ## label and bounding box
+            U[f].append(k) ## tracking ID
+    return U,V
 
 def ranked_regions_of_interest(label_path, 
-                               start_frame=0, stop_frame=100000000, 
-                               Lmin=300, Lmax=1000, 
+                               start_frame=0,
+                               end_frame=-1, 
+                               Lmin=200, 
+                               Lmax=1000, 
                                verbose=0):
 
     label_files = np.array(get_filenames(label_path, txt))
     label_files, frames = sort_by_frame(label_files)
-    idx = (start_frame<=frames) & (frames<stop_frame)
+    
+    ## fill in missing labels...
+    u = np.arange(frames.max())
+    idx = np.in1d(u, frames)
+    u = u[~idx]
+    lf_root = os.path.join(label_path, '_'.join(label_files[0].split('_')[:-1]))
+    for n in u:
+        lf = f'{lf_root}_{n}.txt'
+        make_empty_file(lf)
+    
+    ## trim to start/end frames
+    idx = (start_frame<=frames)
+    if end_frame>0:
+        idx = idx & (frames<end_frame)
     label_files = label_files[idx]
     
     L = []
@@ -742,7 +792,17 @@ def ranked_regions_of_interest(label_path,
     t = int(S.max())-1
     while True:
         if verbose>0: print(t)
-        A,B = np.where(np.diff((S>t)*1)>0)[0], np.where(np.diff((S>t)*1)<0)[0]
+        # A,B = np.where(np.diff((S>t)*1)>0)[0], np.where(np.diff((S>t)*1)<0)[0]
+        #####
+        x = list(np.where(np.diff(S>t))[0])
+        if S[0]>t:
+            x = [0] + x
+        if S[-1]>t:
+            x = x + [len(S)-1]
+        x = np.array(x)
+        A = x[np.arange(0,len(x),2)]
+        B = x[np.arange(1,len(x),2)]
+        ######
         L = B-A
         if L.max()>Lmax:
             break
@@ -757,102 +817,90 @@ def ranked_regions_of_interest(label_path,
     SS = [SS[i] for i in np.arange(1,len(SS),2)]
     ss_max = np.array([s.max() for s in SS])
     idx = ss_max.argsort()[::-1]
-    I = I[:,idx]
+    I = I[:,idx] + start_frame
     if verbose>0: print(ss_max[idx]); print(I); print(np.diff(I,axis=0))
     return I.T
 
 
-def main():
-    verbose = 1
+def main(frame_path, label_path, 
+         save_path=None, 
+         class_file=None,
+         start_frame=0,
+         end_frame=-1, 
+         N=5,
+         min_depth=2,
+         max_depth=10,
+         verbose=1, 
+         ):
+    ###################################################
+    global ROI
+    ###################################################
     
-    root = '/home/david/code/phawk/data/generic/transmission/rgb/master/data/exp23/'
-    # root = '/home/david/code/phawk/data/generic/transmission/rgb/master/data/exp23/toy2/'
+    root_path = str(Path(frame_path).parent.absolute())
     
-    frame_path = root + 'frames/'
-    label_path = root + 'labels/'
-    trans_path = root + 'trans/'
-    save_path  = root + 'best/'
+    if save_path is None:
+        save_path = os.path.join(root_path, 'output')
+    save_path = increment_path(save_path)
+    
+    ## directory for storing homography transforms
+    trans_path = os.path.join(root_path, 'trans')
     mkdirs(trans_path)
-    mkdirs(save_path)
-    classes_file = os.path.join(root, 'classes.txt')
     
-    ###########################################################################
+    ## make sure these end with '/'
+    frame_path = frame_path.rstrip('/')+'/'
+    label_path = label_path.rstrip('/')+'/'
+    trans_path = trans_path.rstrip('/')+'/'
+    
     # find prelim stable regions
-    ROI = ranked_regions_of_interest(label_path, verbose=verbose)
+    ROI = ranked_regions_of_interest(label_path, 
+                                     start_frame=start_frame,
+                                     end_frame=end_frame,
+                                     verbose=verbose)
     
-    ###########################################################################
+    # sys.exit()
     
-    ## max number of candidate frames returned
-    N = 5
-    
+    ## loop through ROI's, best first
     for R in ROI[:N]:
-        # R = ROI[1]
-        start_frame, stop_frame = R
+        start_frame, end_frame = R
         
         ## sort and trim label files by start/stop frames
         label_files = np.array(get_filenames(label_path, txt))
         label_files, frames = sort_by_frame(label_files)
-        idx = (start_frame<=frames) & (frames<stop_frame)
+        idx = (start_frame<=frames) & (frames<end_frame)
         label_files = label_files[idx]
         
         ## parameter scan
-        span, conn = 50, 0.66
+        span, conn = 30, 0.8
         step = 5
         kw = {'span':span, 'conn':conn, 
-              'start_frame':start_frame, 
-              'stop_frame':stop_frame, 
-              'step':step,
-              'root':root,
-              'verbose':verbose,
+              'start_frame': start_frame, 
+              'end_frame': end_frame, 
+              'step': step,
+              'frame_path': frame_path,
+              'label_path': label_path,
+              'trans_path': trans_path,
+              'verbose': verbose,
               }
         
         k = {0:'conn',      1:'span'}
-        v = {0:[0.4,0.8],   1:[20,80]}
+        v = {0:[0.3,0.9],   1:[10,100]}
         eps = {0:0.05,      1:5}
         order = {0:0,       1:-1}
-        T, kw = dual_binary_search(track_objects, kw, k, v, eps, order, min_depth=2, max_depth=10)
-        
-        # sys.exit()
-        ###########################################################################
-        # start_frame,stop_frame = 4300, 5353
-        # start_frame,stop_frame = 4300, 4800
-        # span,conn = 30,0.66
-        
-        # start_frame,stop_frame = 18060, 18400
-        # start_frame,stop_frame = 18000, 18350
-        # span,conn = 85, 0.63
-        # span,conn = 60, 0.68
-        # span,conn = 45, 0.6
-        # step = span//10
-        
-        # start_frame,stop_frame = 10800, 11600
-        # span,conn = 40, 0.6
-        
-        # start_frame,stop_frame = 14000, 16000
-        # start_frame,stop_frame = 14530, 15000
-        # span,conn = 45, 0.6
-        
-    
-        
-        # kw = {'span':span, 'conn':conn, 
-        #       'start_frame':start_frame, 
-        #       'stop_frame':stop_frame, 
-        #       'step':step,
-        #       'root':root,
-        #       'verbose':verbose,
-        #       }
-        # k,T = track_objects(**kw)
+        T, kw = dual_binary_search(track_objects, kw, k, v, eps, order, 
+                                   min_depth=min_depth, 
+                                   max_depth=max_depth
+                                   )
         
         if T is None: ## i.e. no solution found within region
             continue
-            # sys.exit()
         
         # smooth and interpolate labels based on tracking ids
-        V = smooth_labels(T)
+        # returns: U=tracking IDs, V=labels and bounding boxes
+        U,V = smooth_labels(T)
         
         # pick frames with most detections
         L = { k:len(v) for k,v in V.items() }
-        lvals = trim_top_quantile(list(L.values()), 0.95)
+        lvals = trim_top_quantile(list(L.values()), 0.98)
         Lmax = max(lvals)
         F = { k:v for k,v in V.items() if len(v)==Lmax }
         
@@ -890,193 +938,89 @@ def main():
         ## draw detections on frame
         src = src_img_file
         dst = os.path.join(save_path, file_root + jpg)
-        classes = read_lines(classes_file)
+        classes = None if class_file is None else read_lines(class_file)
         draw_boxes(src, dst, labels, classes)
         
-        break
+        
+        # save tracking label files
+        label_save_path = os.path.join(save_path, 'labels')
+        label_save_path = increment_path(label_save_path)
+        
+        for i, lf in enumerate(label_files):
+            lab_file = os.path.join(label_save_path, lf)
+            if i not in V:
+                make_empty_file(lab_file)
+                continue
+            lines = [f'{u} ' + ' '.join([str(e) for e in v[1:5].round(6)]) + f' {int(v[0])}' for u,v in zip(U[i],V[i])]
+            write_lines(lab_file, lines)
     
 
 if __name__ == '__main__':
     
-#     parser = argparse.ArgumentParser(description='Convert hasty labels (COCO format) to YOLO labels')
-# parser.add_argument('--data_dir', help='root directory containing /labels and /images folders ', type=str, required=True)
-# parser.add_argument('--s3', help='s3 bucket of images', type=str, required=True)
-# parser.add_argument('--split', help='train/test split', type=float, default=0.8)
-# args = parser.parse_args()
-
-#######################################
-    verbose = 1
+    # main('/home/david/code/phawk/data/generic/transmission/rgb/master/data/H264/vid1/frames',
+    #       '/home/david/code/phawk/data/generic/transmission/rgb/master/data/H264/vid1/labels',
+    #       class_file='/home/david/code/phawk/data/generic/transmission/rgb/master/data/exp23/classes.txt',
+    #       verbose=2,
+    #       min_depth=4,
+    #       )
     
-    root = '/home/david/code/phawk/data/generic/transmission/rgb/master/data/exp23/'
-    # root = '/home/david/code/phawk/data/generic/transmission/rgb/master/data/exp23/toy2/'
+    #######################################
     
-    frame_path = root + 'frames/'
-    label_path = root + 'labels/'
-    trans_path = root + 'trans/'
-    save_path  = root + 'best/'
-    mkdirs(trans_path)
-    mkdirs(save_path)
-    classes_file = os.path.join(root, 'classes.txt')
+    # main('/home/david/code/phawk/data/generic/transmission/rgb/master/data/exp23/frames',
+    #       '/home/david/code/phawk/data/generic/transmission/rgb/master/data/exp23/labels',
+    #       class_file='/home/david/code/phawk/data/generic/transmission/rgb/master/data/exp23/classes.txt',
+    #       verbose=2,
+    #       min_depth=4,
+    #       )
     
-    ###########################################################################
-    # find prelim stable regions
+    #######################################
     
-    ROI = ranked_regions_of_interest(label_path, verbose=verbose)
+    # label_path = '/home/david/code/phawk/data/generic/transmission/rgb/master/data/jun6/labels/'
+    # label_path = '/home/david/code/phawk/data/generic/transmission/rgb/master/data/jun6/detect/labels/'
+    label_path = '/home/david/code/phawk/data/generic/transmission/rgb/master/data/jun6/detect_2/labels/'
     
-    ###########################################################################
-    ## binary search....
+    frame_path = '/home/david/code/phawk/data/generic/transmission/rgb/master/data/jun6/frames/'
+    # start_frame, end_frame = 0,-1
+    # start_frame, end_frame = 0, 6000
+    # start_frame, end_frame = 8000, 15000
+    start_frame, end_frame = 17500, 24000
+    verbose = 2
     
-    ## max number of candidate frames returned
-    N = 5
-    
-    for R in ROI[:N]:
-        # R = ROI[1]
-        start_frame, stop_frame = R
-        
-        ## sort and trim label files by start/stop frames
-        label_files = np.array(get_filenames(label_path, txt))
-        label_files, frames = sort_by_frame(label_files)
-        idx = (start_frame<=frames) & (frames<stop_frame)
-        label_files = label_files[idx]
-        
-        ## parameter scan
-        span, conn = 50, 0.66
-        step = 5
-        kw = {'span':span, 'conn':conn, 
-              'start_frame':start_frame, 
-              'stop_frame':stop_frame, 
-              'step':step,
-              'root':root,
-              'verbose':verbose,
-              }
-        
-        k = {0:'conn',      1:'span'}
-        v = {0:[0.4,0.8],   1:[20,80]}
-        eps = {0:0.05,      1:5}
-        order = {0:0,       1:-1}
-        T, kw = dual_binary_search(track_objects, kw, k, v, eps, order, min_depth=2, max_depth=10)
-        
-        # sys.exit()
-        ###########################################################################
-        # start_frame,stop_frame = 4300, 5353
-        # start_frame,stop_frame = 4300, 4800
-        # span,conn = 30,0.66
-        
-        # start_frame,stop_frame = 18060, 18400
-        # start_frame,stop_frame = 18000, 18350
-        # span,conn = 85, 0.63
-        # span,conn = 60, 0.68
-        # span,conn = 45, 0.6
-        # step = span//10
-        
-        # start_frame,stop_frame = 10800, 11600
-        # span,conn = 40, 0.6
-        
-        # start_frame,stop_frame = 14000, 16000
-        # start_frame,stop_frame = 14530, 15000
-        # span,conn = 45, 0.6
-        
-    
-        
-        # kw = {'span':span, 'conn':conn, 
-        #       'start_frame':start_frame, 
-        #       'stop_frame':stop_frame, 
-        #       'step':step,
-        #       'root':root,
-        #       'verbose':verbose,
-        #       }
-        # k,T = track_objects(**kw)
-        
-        if T is None: ## i.e. no solution found within region
-            continue
-            # sys.exit()
-        
-        # smooth and interpolate labels based on tracking ids
-        V = smooth_labels(T)
-        
-        # pick frames with most detections
-        L = { k:len(v) for k,v in V.items() }
-        lvals = trim_top_quantile(list(L.values()), 0.95)
-        Lmax = max(lvals)
-        F = { k:v for k,v in V.items() if len(v)==Lmax }
-        
-        ## compute total area of all boxes (% of unit square)
-        ## TODO: improve using mask approach...
-        def area(x):
-            a = np.array([np.prod(y[-2:]) for y in x])
-            ## so towers don't dominate area computation...
-            a = trim_top_quantile(a, 0.95)
-            return a.sum()
-        
-        ## select frame with maximum box area
-        A = { k:area(v) for k,v in F.items() }
-        Amax = max(A.values())
-        G = { k:F[k] for k,v in A.items() if v==Amax }
-        idx,labels = list(G.items())[0]
-        lab_file = label_files[idx]
-        file_root = os.path.splitext(lab_file)[0]
-        
-        frame = int(file_root.split('_')[-1])
-        save_frame_path = os.path.join(save_path, str(frame))
-        mkdirs(save_frame_path)
-        lab_file = os.path.join(save_frame_path, lab_file)
-        
-        ## save detections
-        labels = np.array(labels)
-        lines = [f'{int(x[0])} ' + ' '.join([str(e) for e in x[1:5].round(6)]) for x in labels]
-        write_lines(lab_file, lines)
-        
-        ## copy raw frame
-        src_img_file = os.path.join(frame_path, file_root + jpg)
-        dst_img_file = os.path.join(save_frame_path, file_root + jpg)
-        copyfile(src_img_file, dst_img_file)
-        
-        ## draw detections on frame
-        src = src_img_file
-        dst = os.path.join(save_path, file_root + jpg)
-        classes = read_lines(classes_file)
-        draw_boxes(src, dst, labels, classes)
-        
-        break
+    main(frame_path,
+          label_path,
+          class_file='/home/david/code/phawk/data/generic/transmission/rgb/master/data/jun6/classes.txt',
+          start_frame=start_frame,
+          end_frame=end_frame,
+          verbose=verbose,
+          min_depth=4,
+          )
     
     sys.exit()
-    ###########################################################
-    
-    track_path = root + 'track/'
-    track_lab_path = track_path + 'labels/'
-    mkdirs(track_lab_path)
-    
-    # save to new label files
-    for i, lf in enumerate(label_files):
-        lf3 = track_lab_path + lf
-        if i not in V:
-            make_empty_file(lf3)
-            continue
-        lines = [f'{int(x[0])} ' + ' '.join([str(e) for e in x[1:5].round(6)]) + ' 1' for x in V[i]]
-        write_lines(lf3, lines)
     
     
-    sys.exit()
-    ###########################################################################
-    span,conn = 30, 0.6
-    start_frame,stop_frame = 10800, 12100
-    kw = {'span':span, 'conn':conn, 'start_frame':start_frame, 'stop_frame':stop_frame}
+    ########################################
     
-    k,v = 'span', [10, 100]
-    binary_search(track_objects, kw, k, v, int, 3, -1)
+    parser = argparse.ArgumentParser(description='Use video object tracking to pick best frames/detections')
+    parser.add_argument('--frames', help='directory containing raw video frames', type=str, required=True)
+    parser.add_argument('--labels', help='directory containing yolo detections', type=str, required=True)
+    parser.add_argument('--start', help='starting frame', type=int, default=0)
+    parser.add_argument('--end', help='ending frame', type=int, default=-1)
+    parser.add_argument('--save_path', help='directory to save output', type=str, default=None)
+    parser.add_argument('--classes', help='location of classes file', type=str, default=None)
+    parser.add_argument('--verbose', help='verbosity level', type=int, default=1)
+    parser.add_argument('--N', help='max number of returned frames', type=int, default=5)
+    parser.add_argument('--min_depth', help='min depth of parameter binary search', type=int, default=2)
+    parser.add_argument('--max_depth', help='max depth of parameter binary search', type=int, default=10)
+    args = parser.parse_args()
     
-    
-    span,conn = 30, 0.5
-    kw = {'span':span, 'conn':conn }
-    ## search conn
-    k,v = 'conn', [0.2, 0.8]
-    binary_search(track_objects, kw, k, v, 0.05)
-    ## search span
-    span, conn = kw['span'], kw['conn']
-    k,v = 'span', [span//3, span*3]
-    binary_search(track_objects, kw, k, v, 3, -1)
-    
-            
-    # write "track" label files ???
-    # lf2 = pth2 + lf
-    # write_lines(lf2, lines)  
+    main(frame_path=args.frames,
+         label_path=args.labels, 
+         save_path=args.save_path, 
+         class_file=args.classes,
+         start_frame=args.start,
+         end_frame=args.end, 
+         verbose=args.verbose, 
+         min_depth=args.min_depth,
+         max_depth=args.max_depth,
+         N=args.N,
+         )

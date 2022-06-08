@@ -1,4 +1,4 @@
-import os
+import os,sys
 import json
 import glob
 import re
@@ -117,9 +117,11 @@ def convert_hasty2yolo(json_file, save_dir=None, img_path=None, empty=False):
 
 if __name__ == '__main__':
 
-    # hasty_json_file = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/hasty/wood_dam_ex3.json'
-    # output_dir = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage'
-    # convert_hasty2yolo(hasty_json_file, output_dir)
+    hasty_json_file = '/home/david/code/phawk/data/generic/transmission/rgb/damage/wood_damage/hasty/woodex1.json'
+    output_dir = '/home/david/code/phawk/data/generic/transmission/rgb/damage/wood_damage'
+    convert_hasty2yolo(hasty_json_file, output_dir, empty=True)
+    
+    sys.exit()
     
     ##
     import argparse    
