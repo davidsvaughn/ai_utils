@@ -86,17 +86,19 @@ def save_one_box(xyxy, im, file='image.jpg', gain=1.02, pad=5, BGR=False, save=T
 
 if __name__ == '__main__':
     
-    json_file = '/home/david/code/phawk/data/generic/transmission/rgb/master/hasty/master_exp_5.json'
+    json_file = '/home/david/code/phawk/data/generic/transmission/rgb/master/hasty/master_exp_7.json'
     
     img_path = '/home/david/code/phawk/data/generic/transmission/rgb/master/images/'
-    save_dir = '/home/david/code/phawk/data/generic/transmission/rgb/master/model/model5'
+    save_dir = '/home/david/code/phawk/data/generic/transmission/rgb/master/model/large2'
     
     # save_dir = '/home/david/code/phawk/data/generic/transmission/rgb/master'
     # img_path = f"{Path(save_dir) / 'images'}" + '/'
     
+    TAGS = False
+    ATTRIBS = False
 
     attrib_classes = None
-    attrib_classes = {'Insulator': ['Dead-end']}
+    # attrib_classes = {'Insulator': ['Dead-end']}
     
     # save_crop = True
     save_crop = False
@@ -158,77 +160,82 @@ if __name__ == '__main__':
     all_files = []
     
     for img in data['images']:
-        
         h, w, f = img['height'], img['width'], img['image_name']
-        img_tags, labs = img['tags'], img['labels']
-        
         all_files.append(f)
-    
-        ## store image tags
-        for t in img_tags:
-            if t not in tags:
-                tags[t] = []
-            tags[t].append(f)
-            
-        im = cv2.imread(img_path + f)
+        
+        if ATTRIBS and save_crop:
+            im = cv2.imread(img_path + f)
+
+        if TAGS:
+            ## store image tags
+            img_tags = img['tags']
+            for t in img_tags:
+                if t not in tags:
+                    tags[t] = []
+                tags[t].append(f)
         
         # save object detections in yolo format
+        labs = img['labels']
         for lab in labs:
             XYXY = np.array(lab['bbox'], dtype=np.int32)
             box = XYXY2xywh(XYXY,w,h)
             # Write
             if box[2] > 0 and box[3] > 0:  # if w > 0 and h > 0
                 class_name = lab['class_name']
-
-                ## class attributes...
-                if class_name in class_attribs:
-                    for attrib in class_attribs[class_name]:
-                        attrib_val = lab['attributes'][attrib] if attrib in lab['attributes'] else 'None'
-                        
-                        if attrib_classes is not None and class_name in attrib_classes:
-                            if attrib_val in attrib_classes[class_name]:
-                                class_name = f'{attrib_val} {class_name}'
-                                if class_name not in classes:
-                                    print(f'ERROR: {class_name} not in class list')
-                                    sys.exit()
-
-                        if save_crop:
-                            att = attrib_values[attrib].index(attrib_val)
-                            att_path = os.path.join(save_dir, 'attribs', attrib.replace(' ','_'), f'{att}')
-                            save_one_box(XYXY, im, file=os.path.join(att_path, f), BGR=True)
+                
+                if ATTRIBS:
+                    ## class attributes...
+                    if class_name in class_attribs:
+                        for attrib in class_attribs[class_name]:
+                            attrib_val = lab['attributes'][attrib] if attrib in lab['attributes'] else 'None'
+                            
+                            if attrib_classes is not None and class_name in attrib_classes:
+                                if attrib_val in attrib_classes[class_name]:
+                                    class_name = f'{attrib_val} {class_name}'
+                                    if class_name not in classes:
+                                        print(f'ERROR: {class_name} not in class list')
+                                        sys.exit()
+    
+                            if save_crop:
+                                att = attrib_values[attrib].index(attrib_val)
+                                att_path = os.path.join(save_dir, 'attribs', attrib.replace(' ','_'), f'{att}')
+                                save_one_box(XYXY, im, file=os.path.join(att_path, f), BGR=True)
                 
                 ## write to yolo label file
                 if class_name not in classes:
                     continue
+                
                 cls = classes.index(class_name)
                 line = cls, *(box)  # cls, box or segments
                 with open((lab_path / f).with_suffix('.txt'), 'a') as file:
                     file.write(('%g ' * len(line)).rstrip() % line + '\n')
-                    
-    ################################
-    ## setup image tag classification...
-    all_files = np.array(all_files)
-    all_files.sort()
+       
     
-    for tag in tags.keys():
-        pos_files = np.array(tags[tag])
-        pos_files.sort()
-        idx = ~np.in1d(all_files, pos_files)
-        neg_files = all_files[idx]
+    if TAGS:
+        ################################
+        ## setup image tag classification...
+        all_files = np.array(all_files)
+        all_files.sort()
         
-        tag_path = os.path.join(save_dir, 'tags', tag)
-        pos_path = os.path.join(tag_path, '1')
-        neg_path = os.path.join(tag_path, '0')
-        mkdirs(pos_path)
-        mkdirs(neg_path)
-        
-        for f in pos_files:
-            src = os.path.join(img_path, f)
-            dst = os.path.join(pos_path, f)
-            copyfile(src, dst)
-        for f in neg_files:
-            src = os.path.join(img_path, f)
-            dst = os.path.join(neg_path, f)
-            copyfile(src, dst)
+        for tag in tags.keys():
+            pos_files = np.array(tags[tag])
+            pos_files.sort()
+            idx = ~np.in1d(all_files, pos_files)
+            neg_files = all_files[idx]
+            
+            tag_path = os.path.join(save_dir, 'tags', tag)
+            pos_path = os.path.join(tag_path, '1')
+            neg_path = os.path.join(tag_path, '0')
+            mkdirs(pos_path)
+            mkdirs(neg_path)
+            
+            for f in pos_files:
+                src = os.path.join(img_path, f)
+                dst = os.path.join(pos_path, f)
+                copyfile(src, dst)
+            for f in neg_files:
+                src = os.path.join(img_path, f)
+                dst = os.path.join(neg_path, f)
+                copyfile(src, dst)
         
     

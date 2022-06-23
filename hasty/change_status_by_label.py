@@ -33,9 +33,9 @@ print(h.get_projects())
 # Get project by id
 # pid = 'ad88c3e7-aad2-4e2f-a0c3-e78c38845c6f' ## Solar Construction
 # pid = 'ac8d612c-da2f-49d6-964e-9d3149d25ff3' ## Solar Construction 2
-# pid = 'a55dadc8-1808-47a6-9ba5-dad69723efe5' ## Transmission Master
+pid = 'a55dadc8-1808-47a6-9ba5-dad69723efe5' ## Transmission Master
 # pid = '2da96c3c-0bd6-429b-8076-e5aa53ba7940' ## Insulator Damage
-pid = 'bb5e2e2d-0645-4b91-9f19-9e34b0645e4b' ## Wood Damage
+# pid = 'bb5e2e2d-0645-4b91-9f19-9e34b0645e4b' ## Wood Damage
 # pid = 'bf104acc-44f9-4103-9379-c4096e570f6c' ## Solar Thermal Damage
 
 proj = h.get_project(pid)
@@ -55,9 +55,11 @@ def filter_labels(image, label_ids):
     labels = image.get_labels()
     return [lab for lab in labels if lab.class_id in label_ids]
 
-ID1 = '6fb4a67b-498b-4d7f-b77a-c267eb699359' # Crack
+# ID1 = '6fb4a67b-498b-4d7f-b77a-c267eb699359' # Crack
+LAB_ID1 = '9e3e8453-91ec-4133-bc61-77cf857bcab2' #	Dead-end Insulator
+LAB_ID2 = '148e15f3-704e-4801-bfca-8ae5b10e951c' #	Tension Clamp
 
-LABEL_IDS = [ID1]
+# LABEL_IDS = [ID1]
 
 ## Status types are....
 NEW  = 'NEW'
@@ -78,8 +80,14 @@ for i,image in enumerate(images):
     
     if i%10==0: print(f'{j}/{i}/{len(images)}')
     
-    labs = filter_labels(image, LABEL_IDS)
-    if len(labs)==0: continue
+    if not image_has_label(image, LAB_ID1):
+        continue
+    if image_has_label(image, LAB_ID2):
+        continue
+    
+    # labs = filter_labels(image, LABEL_IDS)
+    # if len(labs)==0: continue
+
     j+=1
     image.set_status(DST_STATUS)
         

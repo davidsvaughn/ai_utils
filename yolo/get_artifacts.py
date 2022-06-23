@@ -50,14 +50,14 @@ It will arrange the files in the same structure as 'training_start.py' script in
 ## Transmission ##
 
 # # Transmission Master
-# DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/rgb/master'
-# MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/rgb/master/model/model5'
-# MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/transmission-master-3008-5a/'
+DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/rgb/master'
+MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/rgb/master/model/large1'
+MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/transmission-rgb-3008-large1/'
 
 # Transmission Edge-Small
-DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/rgb/master'
-MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/rgb/master/model/small2'
-MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/transmission-small-720-b/'
+# DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/rgb/master'
+# MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/rgb/master/model/small2'
+# MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/transmission-small-720-b/'
 
 ## Insulator Damage
 # DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/damage/insulator_damage'
@@ -65,9 +65,9 @@ MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/
 # MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/insulator-damage-1280-5m6-freeze3/'
 
 ## Wood Damage
-# DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage'
-# MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/models/model2'
-# MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/wood-damage-2048-a/'
+# DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/rgb/damage/wood_damage'
+# MODEL_DIR       = '/home/david/code/phawk/data/generic/transmission/rgb/damage/wood_damage/models/model3'
+# MODEL_BUCKET    = 's3://ai-inference-dev-model-catalog/model/yolo-v5-full-scale/wood-damage-2048-b/'
 
 ## Pseudo-Thermal
 # DATA_DIR        = '/home/david/code/phawk/data/generic/transmission/thermal/models/pseudo1'

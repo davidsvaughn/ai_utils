@@ -12,7 +12,7 @@ from skmultilearn.model_selection import IterativeStratification
 
 ''' Set these file paths appropriately... '''
 
-DATA_DIR            = '/home/david/code/phawk/data/generic/transmission/rgb/master/model/model5/'
+DATA_DIR            = '/home/david/code/phawk/data/generic/transmission/rgb/master/model/large2/'
 S3_IMG_BUCKETS      = ['s3://ph-dvaughn-dev/transmission/data/master/images/',]
 
 MANIFEST_FILE       = DATA_DIR + 'manifest.txt'
@@ -23,7 +23,7 @@ LABEL_DIRS          = [DATA_DIR + 'labels',]
 IMAGE_DIRS          = ['/home/david/code/phawk/data/generic/transmission/rgb/master/images',]
 
 ## insulator_damage...
-# DATA_DIR            = '/home/david/code/phawk/data/generic/transmission/damage/insulator_damage/' ## local save directory
+# DATA_DIR            = '/home/david/code/phawk/data/generic/transmission/rgb/damage/insulator_damage/' ## local save directory
 # MANIFEST_FILE       = DATA_DIR + 'manifest.txt'
 # MANIFEST_STATS_FILE = DATA_DIR + 'manifest_stats.txt'
 # CATEGORIES_FILE     = DATA_DIR + 'categories.json'
@@ -34,7 +34,7 @@ IMAGE_DIRS          = ['/home/david/code/phawk/data/generic/transmission/rgb/mas
 ## CLASSES_FILE        = '/home/david/code/phawk/data/solar/indivillage/classes.txt'
 ## LABEL_DIRS          = ['/home/david/code/phawk/data/solar/indivillage/labels',]
 
-# DATA_DIR            = '/home/david/code/phawk/data/generic/transmission/damage/wood_damage/' ## local save directory
+# DATA_DIR            = '/home/david/code/phawk/data/generic/transmission/rgb/damage/wood_damage/' ## local save directory
 # S3_IMG_BUCKETS      = ['s3://ai-labeling/transmission/images/wood/',]
 
 # MANIFEST_FILE       = DATA_DIR + 'manifest.txt'
@@ -50,7 +50,7 @@ TRAIN/TEST/VAL split weightings:
 - DON'T need to normalize... just give *relative* weightings ** ( the code will normalize so sum[weights]==1 )
 - If TEST or VAL weight==0, then TEST SET == VAL SET
 '''
-SPLITS = [20,5,0]  ## [TRAIN,TEST,VAL] relative proportions
+SPLITS = [20,4,0]  ## [TRAIN,TEST,VAL] relative proportions
 
 ## make empty label files for images with no label file...
 MAKE_EMPTY_LABELS = False

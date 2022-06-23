@@ -30,7 +30,7 @@ def upload_s3_file(src_file, s3_path):
         print(f"Failed to upload file to S3: {src_file}")
 
 def upload_files(files, s3_path):
-    executor = ThreadPoolExecutor(max_workers=64)
+    executor = ThreadPoolExecutor(max_workers=32)
     for i,file_path in enumerate(files):
         executor.submit(upload_s3_file, file_path, s3_path)
         if i%100==0:
