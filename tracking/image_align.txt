@@ -1,0 +1,59 @@
+
+/media/david/Elements/phdell/code/phawk/data/fpl/thermal/label_transfer/label_align_loop.py
+
+-----------------------------------------------------------------------------------------------------------------
+david@camden:~$ sudo find / -name "image_align*.py"
+find: ‘/media/david/Elements/.Trash-1000/expunged/1972367189’: Input/output error
+find: ‘/media/david/Elements/.Trash-1000/files/test’: Input/output error
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align.py
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align2.py
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align3.py
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align4.py
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align5.py
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align6.py
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align7.py
+
+-----------------------------------------------------------------------------------------------------------------
+
+
+david@camden:/media/david/Elements/revibex/code$ sudo egrep -ir --include=*.py --exclude-dir={venv,lib,site-packages,BORIS,revibe-ml,labelImg,utils} "gray" /media/david/Elements/revibex/code
+
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/ecc_demo.py:    ## convert to grayscale
+
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align.py:## convert to grayscale
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align.py:ax1.imshow(e1, cmap=plt.cm.gray)
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align.py:ax2.imshow(e2, cmap=plt.cm.gray)
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align2.py:## convert to grayscale
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align3.py:def np2gray(x):
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align3.py:im1 = np2gray(im1)
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align3.py:im2 = np2gray(im2)
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align4.py:def np2gray(x):
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align4.py:    im1 = np2gray(im1)
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align4.py:    im2 = np2gray(im2)
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align5.py:def np2gray(x):
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align5.py:im1 = np2gray(im1)
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align5.py:im2 = np2gray(im2)
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align5.py:# im1 = np2gray(im1)
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align5.py:# im2 = np2gray(im2)
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align6.py:def np2gray(x):
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align6.py:    # im1 = np2gray(im1)
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align6.py:    # im2 = np2gray(im2)
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align7.py:def np2gray(x):
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align7.py:    # im1 = np2gray(im1)
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/image_align7.py:    # im2 = np2gray(im2)
+
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/label_align.py:def np2gray(x):
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/label_align_loop.py:def np2gray(x):
+
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/label_thermal_pairs.py:    write_labels, cropimg, cropbox, croplab, np_resize, np2gray, yolo2box
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/label_thermal_pairs.py:            im1 = np2gray(im1)
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/label_thermal_pairs.py:            im2 = np2gray(im2)
+
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/thermal_convert.py:def rgb2gray(rgb):
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/thermal_convert.py:def save_np(im, f, gray=True):
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/thermal_convert.py:    if gray:
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/thermal_convert.py:gray = im.convert('L')
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/thermal_convert.py:plt.imshow(gray, cmap='Greys_r'); plt.show()
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/thermal_convert.py:g2 = np.array(gray)
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/thermal_convert.py:    rgba = scalarMap.to_rgba(gray)
+/media/david/Elements/revibex/code/repo/ai_docker/datasets/python/thermal_convert.py:    gt = up(rgb2gray(rgb))
